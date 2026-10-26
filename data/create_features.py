@@ -60,24 +60,20 @@ print(
 
 
 # --------------------------------------------
-# Calendar features
+# Calendar features for the NEXT-hour target
 # --------------------------------------------
 
-print("\n[2/5] Creating calendar features...")
+print("\n[2/5] Creating next-hour calendar features...")
 
-df["hour"] = df["timestamp"].dt.hour
+target_timestamp = df["timestamp"] + pd.Timedelta(hours=1)
 
-df["day_of_week"] = (
-    df["timestamp"].dt.dayofweek
-)
+df["hour"] = target_timestamp.dt.hour
 
-df["day_of_month"] = (
-    df["timestamp"].dt.day
-)
+df["day_of_week"] = target_timestamp.dt.dayofweek
 
-df["month"] = (
-    df["timestamp"].dt.month
-)
+df["day_of_month"] = target_timestamp.dt.day
+
+df["month"] = target_timestamp.dt.month
 
 df["is_weekend"] = (
     df["day_of_week"] >= 5
