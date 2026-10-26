@@ -19,6 +19,19 @@ function formatNumber(value, decimals = 0) {
   });
 }
 
+function parseCsvText(text) {
+  const lines = text.trim().split(/\r?\n/);
+  if (lines.length < 2) return [];
+  const headers = lines[0].split(",");
+  return lines.slice(1).filter(Boolean).map((line) => {
+    const values = line.split(",");
+    return Object.fromEntries(headers.map((header, index) => [
+      header,
+      values[index] ?? "",
+    ]));
+  });
+}
+
 function getAnomalyType(anomaly) {
   if (!anomaly) return "normal";
   if (!anomaly.detected && anomaly.is_peak) return "peak";
@@ -64,6 +77,14 @@ function App() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [activeInsight, setActiveInsight] = useState("overview");
+  const [researchSummary, setResearchSummary] = useState([]);
+  const [matchedSummary, setMatchedSummary] = useState([]);
+  const [researchExperiment, setResearchExperiment] = useState([]);
+  const [researchLoading, setResearchLoading] = useState(true);
+  const [researchError, setResearchError] = useState("");
+  const [researchFilters, setResearchFilters] = useState({
+    pue: "all", variability: "all", jobs: "all", capacity: "all", view: "matched",
+  });
 
   async function loadDashboard() {
     try {
@@ -118,6 +139,33 @@ function App() {
 
     return () => clearInterval(interval);
   }, []);
+  
+  useEffect(() => {
+    async function loadResearchData() {
+      try {
+        const [sensitivityResponse, matchedResponse, experimentResponse] = await Promise.all([
+          fetch("/data/sensitivity_summary.csv"),
+          fetch("/data/matched_service_scenario_summary.csv"),
+          fetch("/data/experiment_summary.csv"),
+        ]);
+        if (![sensitivityResponse, matchedResponse, experimentResponse].every((response) => response.ok)) {
+          throw new Error("Research CSV files could not be loaded.");
+        }
+        const [sensitivityCsv, matchedCsv, experimentCsv] = await Promise.all([
+          sensitivityResponse.text(), matchedResponse.text(), experimentResponse.text(),
+        ]);
+        setResearchSummary(parseCsvText(sensitivityCsv));
+        setMatchedSummary(parseCsvText(matchedCsv));
+        setResearchExperiment(parseCsvText(experimentCsv));
+      } catch (researchLoadError) {
+        console.error("Research data error:", researchLoadError);
+        setResearchError("Research results could not be loaded. Pull the latest repository changes and restart the frontend.");
+      } finally {
+        setResearchLoading(false);
+      }
+    }
+    loadResearchData();
+  }, []);
 
   const chartData = useMemo(
     () => dashboard?.energy_history || [],
@@ -150,6 +198,20 @@ function App() {
 
   const decision = dashboard?.decision;
   const historical = dashboard?.historical_intelligence;
+  const activeResearchRows = researchFilters.view === "matched" ? matchedSummary : researchSummary;
+  const filteredResearchRows = activeResearchRows.filter((row) =>
+    (researchFilters.pue === "all" || row.pue_scenario === researchFilters.pue) &&
+    (researchFilters.variability === "all" || row.carbon_variability === researchFilters.variability) &&
+    (researchFilters.jobs === "all" || String(row.job_count) === researchFilters.jobs) &&
+    (researchFilters.capacity === "all" || String(row.hourly_capacity) === researchFilters.capacity)
+  );
+  const averageOf = (rows, key) => rows.length
+    ? rows.reduce((total, row) => total + (Number(row[key]) || 0), 0) / rows.length
+    : 0;
+  const researchMeanReduction = averageOf(matchedSummary, "mean_carbon_aware_matched_reduction_pct");
+  const researchCoverage = averageOf(matchedSummary, "mean_common_work_coverage_pct");
+  const significantScenarios = matchedSummary.filter((row) => String(row.significant_fdr_0_05).toLowerCase() === "true").length;
+
 
   if (loading && !dashboard) {
     return (
@@ -1673,6 +1735,97 @@ function App() {
           </section>
         )}
 
+
+        {/* RESEARCH RESULTS: synthetic carbon-aware scheduling experiments */}
+        <section className="research-section" id="research-results">
+          <div className="research-heading">
+            <div>
+              <span className="research-eyebrow">GREENMIND AI · RESEARCH LAB</span>
+              <h2>Carbon-aware Scheduling Research</h2>
+              <p>Scenario experiments comparing scheduling policies under different workload, grid-carbon, and facility-overhead assumptions.</p>
+            </div>
+            <span className="research-status">SIMULATION RESULTS</span>
+          </div>
+          {researchLoading ? (
+            <div className="research-panel research-loading"><span className="loading-spinner">🌱</span><p>Loading research results…</p></div>
+          ) : researchError ? (
+            <div className="research-panel research-error"><strong>Research data unavailable</strong><p>{researchError}</p></div>
+          ) : (
+            <>
+              <div className="research-kpi-grid">
+                <div className="research-kpi"><span>SCENARIO COMBINATIONS</span><strong>{formatNumber(matchedSummary.length)}</strong><small>Across PUE, carbon variability, workload size and capacity</small></div>
+                <div className="research-kpi"><span>PAIRED TRIALS</span><strong>{formatNumber(matchedSummary.reduce((sum, row) => sum + (Number(row.trials) || 0), 0))}</strong><small>10 paired seeds per scenario, 3 policies</small></div>
+                <div className="research-kpi"><span>MEAN CARBON-AWARE REDUCTION</span><strong>{formatNumber(researchMeanReduction, 2)}%</strong><small>Matched completed jobs, scenario-average</small></div>
+                <div className="research-kpi"><span>COMMON-WORK COVERAGE</span><strong>{formatNumber(researchCoverage, 2)}%</strong><small>Average work represented in matched comparisons</small></div>
+                <div className="research-kpi"><span>FDR-SIGNIFICANT SCENARIOS</span><strong>{formatNumber(significantScenarios)}</strong><small>Deadline-carbon vs carbon-aware; adjusted p-value below 0.05</small></div>
+              </div>
+              <div className="research-panel research-experiment-panel">
+                <div className="research-panel-heading"><div><h3>Single-run policy comparison</h3><p>One illustrative 240-job experiment from the saved research output</p></div><span className="research-tag">EXPERIMENT SUMMARY</span></div>
+                <div className="research-policy-grid">
+                  {researchExperiment.map((row) => (
+                    <div className="research-policy-card" key={row.policy}>
+                      <span className="research-policy-name">{row.policy.replaceAll("_", " ")}</span>
+                      <strong>{formatNumber(row.emissions_kg_co2, 2)} <small>kg CO₂</small></strong>
+                      <div className="research-policy-meta"><span>{formatNumber(row.completion_rate_pct, 1)}% completed</span><span>{formatNumber(row.emissions_reduction_vs_baseline_pct, 2)}% reduction</span></div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+              <div className="research-panel">
+                <div className="research-panel-heading">
+                  <div><h3>Scenario explorer</h3><p>Filter and compare the saved experiment summaries</p></div>
+                  <label className="research-select-label">Dataset
+                    <select value={researchFilters.view} onChange={(event) => setResearchFilters((old) => ({ ...old, view: event.target.value }))}>
+                      <option value="matched">Matched-service analysis</option><option value="sensitivity">Full-workload sensitivity</option>
+                    </select>
+                  </label>
+                </div>
+                <div className="research-filters">
+                  <label>PUE scenario<select value={researchFilters.pue} onChange={(event) => setResearchFilters((old) => ({ ...old, pue: event.target.value }))}><option value="all">All scenarios</option><option value="low_overhead">Low overhead</option><option value="high_overhead">High overhead</option></select></label>
+                  <label>Carbon variability<select value={researchFilters.variability} onChange={(event) => setResearchFilters((old) => ({ ...old, variability: event.target.value }))}><option value="all">All variability</option><option value="low">Low</option><option value="standard">Standard</option><option value="high">High</option></select></label>
+                  <label>Jobs<select value={researchFilters.jobs} onChange={(event) => setResearchFilters((old) => ({ ...old, jobs: event.target.value }))}><option value="all">All workloads</option><option value="180">180 jobs</option><option value="240">240 jobs</option><option value="300">300 jobs</option></select></label>
+                  <label>Hourly capacity<select value={researchFilters.capacity} onChange={(event) => setResearchFilters((old) => ({ ...old, capacity: event.target.value }))}><option value="all">All capacities</option><option value="8">8 units</option><option value="12">12 units</option><option value="16">16 units</option></select></label>
+                  <button className="research-reset" onClick={() => setResearchFilters({ pue: "all", variability: "all", jobs: "all", capacity: "all", view: researchFilters.view })}>Reset filters</button>
+                </div>
+                <div className="research-chart-legend"><span><i className="research-legend-dot carbon-aware-dot" /> Carbon-aware</span><span><i className="research-legend-dot deadline-dot" /> Deadline-carbon</span></div>
+                <div className="research-bars">
+                  {filteredResearchRows.slice(0, 18).map((row) => {
+                    const carbonReduction = Number(researchFilters.view === "matched" ? row.mean_carbon_aware_matched_reduction_pct : row.mean_carbon_aware_reduction_pct) || 0;
+                    const deadlineReduction = Number(researchFilters.view === "matched" ? row.mean_deadline_carbon_matched_reduction_pct : row.mean_deadline_carbon_reduction_pct) || 0;
+                    const scale = Math.max(1, ...filteredResearchRows.slice(0, 18).flatMap((item) => [
+                      Number(researchFilters.view === "matched" ? item.mean_carbon_aware_matched_reduction_pct : item.mean_carbon_aware_reduction_pct) || 0,
+                      Number(researchFilters.view === "matched" ? item.mean_deadline_carbon_matched_reduction_pct : item.mean_deadline_carbon_reduction_pct) || 0,
+                    ]));
+                    return <div className="research-bar-row" key={`${row.pue_scenario}-${row.carbon_variability}-${row.job_count}-${row.hourly_capacity}`}>
+                      <div className="research-bar-label"><strong>{row.pue_scenario.replace("_", " ")} · {row.carbon_variability}</strong><span>{row.job_count} jobs / {row.hourly_capacity} units per hour</span></div>
+                      <div className="research-bar-track"><div className="research-bar-fill carbon-aware-fill" style={{ width: `${Math.max(0, carbonReduction / scale * 100)}%` }} /></div><span className="research-bar-value">{formatNumber(carbonReduction, 2)}%</span>
+                      <div className="research-bar-track"><div className="research-bar-fill deadline-fill" style={{ width: `${Math.max(0, deadlineReduction / scale * 100)}%` }} /></div><span className="research-bar-value">{formatNumber(deadlineReduction, 2)}%</span>
+                    </div>;
+                  })}
+                </div>
+                <div className="research-table-header"><strong>Scenario data</strong><span>{formatNumber(filteredResearchRows.length)} matching scenarios · showing up to 81</span></div>
+                <div className="research-table-wrap">
+                  <table className="research-table">
+                    <thead><tr><th>PUE</th><th>Carbon</th><th>Jobs</th><th>Capacity</th><th>Coverage</th><th>Carbon-aware reduction</th><th>Deadline-carbon reduction</th>{researchFilters.view === "matched" && <th>FDR significant</th>}</tr></thead>
+                    <tbody>
+                      {filteredResearchRows.map((row) => {
+                        const coverage = researchFilters.view === "matched" ? row.mean_common_work_coverage_pct : row.mean_carbon_aware_work_completion_pct;
+                        const carbonReduction = researchFilters.view === "matched" ? row.mean_carbon_aware_matched_reduction_pct : row.mean_carbon_aware_reduction_pct;
+                        const deadlineReduction = researchFilters.view === "matched" ? row.mean_deadline_carbon_matched_reduction_pct : row.mean_deadline_carbon_reduction_pct;
+                        return <tr key={`${row.pue_scenario}-${row.carbon_variability}-${row.job_count}-${row.hourly_capacity}`}>
+                          <td>{row.pue_scenario.replace("_", " ")}</td><td>{row.carbon_variability}</td><td>{row.job_count}</td><td>{row.hourly_capacity}</td><td>{formatNumber(coverage, 2)}%</td><td>{formatNumber(carbonReduction, 2)}%</td><td>{formatNumber(deadlineReduction, 2)}%</td>
+                          {researchFilters.view === "matched" && <td><span className={String(row.significant_fdr_0_05).toLowerCase() === "true" ? "research-significant yes" : "research-significant"}>{String(row.significant_fdr_0_05).toLowerCase() === "true" ? "Yes" : "No"}</span></td>}
+                        </tr>;
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+                <p className="research-footnote">Interpretation note: all research values come from synthetic simulation inputs, not live data-center measurements. Matched-service emissions compare the same jobs completed by all three policies; coverage is shown because the matched subset may not represent all generated work. The 6 FDR-significant scenario comparisons concern the deadline-carbon versus carbon-aware difference, not a universal claim of superiority.</p>
+                <div className="research-links"><a href="https://github.com/dakshrathi911/greenmind-research/blob/main/research/results/matched_service_analysis_report.md" target="_blank" rel="noreferrer">Read matched-service report ↗</a><a href="https://github.com/dakshrathi911/greenmind-research/blob/main/research/results/sensitivity_summary.csv" target="_blank" rel="noreferrer">Open sensitivity CSV ↗</a><a href="https://github.com/dakshrathi911/greenmind-research/blob/main/research/results/matched_service_scenario_summary.csv" target="_blank" rel="noreferrer">Open matched-service CSV ↗</a></div>
+              </div>
+            </>
+          )}
+        </section>
 
         {/* FOOTER */}
         <footer>
