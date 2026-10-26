@@ -22,7 +22,7 @@ From the repository root, with the project's Python dependencies installed:
 python .\research\carbon_experiment.py
 python .\research\multi_seed_experiment.py
 python .\research\sensitivity_analysis.py
-python .\\research\\matched_service_analysis.py
+python .\research\matched_service_analysis.py
 python -m unittest discover -s research/tests -v
 ```
 
