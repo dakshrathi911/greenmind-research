@@ -8,6 +8,8 @@ This folder contains the reproducible synthetic scheduling experiments for Green
 - **Carbon-aware heuristic:** processes jobs in arrival order and assigns each to its lowest modeled-emissions feasible hour.
 - **Deadline-aware carbon heuristic:** processes jobs in earliest-deadline-first order, then assigns each job to the feasible hour with the lowest modeled emissions per work unit.
 
+The simulator reports both job completion and work-unit completion. Missed jobs contribute no scheduled energy or emissions in the current model, so total emissions must always be interpreted alongside completed work. It also reports emissions per completed work unit; this ratio is undefined when no work is completed. These metrics help expose service-level trade-offs but do not, by themselves, create a matched-service comparison.
+
 The model treats 0.8 kWh per work unit as illustrative IT energy and multiplies it by an hourly power usage effectiveness (PUE) profile to estimate facility energy. PUE is a simplified cooling/overhead proxy, not a detailed thermal or cooling-system simulation.
 
 All policies use the same generated workload, hourly capacity limit, deadline windows, and carbon-intensity series within each paired trial. The deadline-aware policy is an offline heuristic because it sorts the full workload before scheduling; it is not a real-time scheduler.
