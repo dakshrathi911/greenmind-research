@@ -194,8 +194,14 @@ def main() -> None:
 
     baseline_emissions = baseline["emissions_kg_co2"]
     aware_emissions = carbon_aware["emissions_kg_co2"]
+    deadline_emissions = deadline_carbon["emissions_kg_co2"]
     reduction_pct = (
         100.0 * (baseline_emissions - aware_emissions) / baseline_emissions
+        if baseline_emissions > 0
+        else 0.0
+    )
+    deadline_reduction_pct = (
+        100.0 * (baseline_emissions - deadline_emissions) / baseline_emissions
         if baseline_emissions > 0
         else 0.0
     )
@@ -211,7 +217,9 @@ def main() -> None:
         )
 
     summary = pd.DataFrame(summary_rows)
-    summary["emissions_reduction_vs_baseline_pct"] = [0.0, reduction_pct]
+    summary["emissions_reduction_vs_baseline_pct"] = [
+        0.0, reduction_pct, deadline_reduction_pct
+    ]
     summary.to_csv(OUTPUT_DIR / "experiment_summary.csv", index=False)
 
     schedule_rows = []
