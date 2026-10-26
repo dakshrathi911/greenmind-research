@@ -62,14 +62,30 @@ def generate_carbon_intensity(seed: int = SEED + 1) -> np.ndarray:
 
 
 def run_policy(jobs: list[Job], carbon: np.ndarray, policy: str) -> dict:
-    """Schedule jobs under a shared per-hour capacity constraint."""
+    """Schedule jobs under a shared per-hour capacity constraint.
+
+    Policies:
+    - baseline: process jobs in arrival order; use the earliest feasible hour
+    - carbon_aware: process jobs in arrival order; use the lowest-carbon hour
+    - deadline_carbon: process earliest deadlines first; use the lowest-carbon
+      feasible hour for each job
+    """
     capacity = np.zeros(HOURS, dtype=int)
     schedule = []
     total_energy = 0.0
     total_emissions = 0.0
     missed_deadlines = 0
 
-    for job in jobs:
+    if policy == "deadline_carbon":
+        ordered_jobs = sorted(
+            jobs, key=lambda job: (job.deadline, job.arrival, job.job_id)
+        )
+    elif policy in ("baseline", "carbon_aware"):
+        ordered_jobs = jobs
+    else:
+        raise ValueError(f"Unknown policy: {policy}")
+
+    for job in ordered_jobs:
         candidates = [
             hour
             for hour in range(job.arrival, job.deadline + 1)
@@ -95,10 +111,10 @@ def run_policy(jobs: list[Job], carbon: np.ndarray, policy: str) -> dict:
 
         if policy == "baseline":
             chosen_hour = candidates[0]
-        elif policy == "carbon_aware":
-            chosen_hour = min(candidates, key=lambda hour: (carbon[hour], hour))
         else:
-            raise ValueError(f"Unknown policy: {policy}")
+            chosen_hour = min(
+                candidates, key=lambda hour: (carbon[hour], hour)
+            )
 
         capacity[chosen_hour] += job.work
         energy = job.work * KWH_PER_WORK_UNIT
@@ -131,7 +147,6 @@ def run_policy(jobs: list[Job], carbon: np.ndarray, policy: str) -> dict:
         "emissions_kg_co2": total_emissions,
         "schedule": schedule,
     }
-
 
 def main() -> None:
     OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
