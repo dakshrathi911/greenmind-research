@@ -84,9 +84,9 @@ def run_policy(
 
     Policies:
     - baseline: process jobs in arrival order; use the earliest feasible hour
-    - carbon_aware: process jobs in arrival order; use the lowest-carbon hour
-    - deadline_carbon: process earliest deadlines first; use the lowest-carbon
-      feasible hour for each job
+    - carbon_aware: process jobs in arrival order; minimize modeled emissions
+    - deadline_carbon: process earliest deadlines first; minimize modeled
+      emissions among each job's feasible hours
     """
     if pue is None:
         pue = np.ones(HOURS, dtype=float)
@@ -223,7 +223,7 @@ def main() -> None:
     summary.to_csv(OUTPUT_DIR / "experiment_summary.csv", index=False)
 
     schedule_rows = []
-    for result in (baseline, carbon_aware):
+    for result in (baseline, carbon_aware, deadline_carbon):
         for row in result["schedule"]:
             schedule_rows.append({"policy": result["policy"], **row})
 
