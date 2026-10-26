@@ -1,0 +1,3 @@
+policy,jobs_total,jobs_completed,jobs_missed,completion_rate_pct,energy_kwh,emissions_kg_co2,emissions_reduction_vs_baseline_pct
+baseline,240,240,0,100.0,488.00000000000006,198.6648807544129,0.0
+carbon_aware,240,240,0,100.0,488.00000000000006,169.28304267590684,14.78964876274611
