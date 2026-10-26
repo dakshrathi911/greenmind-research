@@ -1,0 +1,4 @@
+policy,scenario_trial_rows,total_jobs_across_trials,jobs_missed,jobs_completed_estimate,completion_rate_pct_from_missed_jobs,mean_reported_completion_rate_pct
+Baseline,810,194400,18,194382,99.99074074074075,99.99259259259259
+Carbon-aware,810,194400,519,193881,99.73302469135803,99.77163923182442
+Deadline-carbon,810,194400,158,194242,99.91872427983539,99.93185871056242
