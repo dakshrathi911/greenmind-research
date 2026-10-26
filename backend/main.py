@@ -1650,6 +1650,49 @@ def generate_historical_intelligence(
 # DASHBOARD ENDPOINT
 # ============================================================
 
+
+# ============================================================
+# RESEARCH RESULTS (read current locally generated CSV files)
+# ============================================================
+
+RESEARCH_RESULTS_DIR = BASE_DIR / "research" / "results"
+
+
+def _read_result_csv(filename, limit=None):
+    path = RESEARCH_RESULTS_DIR / filename
+    if not path.exists():
+        return []
+    frame = pd.read_csv(path)
+    if limit is not None:
+        frame = frame.head(limit)
+    import json
+    return json.loads(frame.to_json(orient="records"))
+
+
+@app.get("/api/research/summary")
+def research_summary_endpoint():
+    filenames = [
+        "experiment_summary.csv",
+        "multi_seed_policy_summary.csv",
+        "multi_seed_overall_summary.csv",
+        "sensitivity_summary.csv",
+        "matched_service_scenario_summary.csv",
+    ]
+    existing = [RESEARCH_RESULTS_DIR / name for name in filenames if (RESEARCH_RESULTS_DIR / name).exists()]
+    latest_update = max((path.stat().st_mtime for path in existing), default=None)
+    generated_at = datetime.fromtimestamp(latest_update).astimezone().isoformat(timespec="seconds") if latest_update is not None else None
+    return {
+        "generated_at": generated_at,
+        "source_note": "Synthetic scheduling workloads and carbon/PUE profiles; not live facility measurements.",
+        "single_run": _read_result_csv("experiment_summary.csv"),
+        "policy_summary": _read_result_csv("multi_seed_policy_summary.csv"),
+        "overall_summary": _read_result_csv("multi_seed_overall_summary.csv"),
+        "sensitivity": _read_result_csv("sensitivity_summary.csv"),
+        "matched_service": _read_result_csv("matched_service_scenario_summary.csv"),
+        "available": bool(existing),
+    }
+
+
 @app.get("/api/dashboard")
 def dashboard():
 
