@@ -4,10 +4,11 @@ This folder contains the first reproducible research experiment for GreenMind AI
 
 ## Policies compared
 
-- **Baseline:** assigns each job to the earliest feasible hour.
-- **Carbon-aware heuristic:** assigns each job to the feasible hour with the lowest configured carbon intensity.
+- **Baseline:** processes jobs in arrival order and assigns each to the earliest feasible hour.
+- **Carbon-aware heuristic:** processes jobs in arrival order and assigns each to its lowest-carbon feasible hour.
+- **Deadline-aware carbon heuristic:** processes jobs in earliest-deadline-first order, then assigns each job to its lowest-carbon feasible hour.
 
-Both policies use the same generated jobs, hourly capacity limit, deadline windows, and carbon-intensity series. This makes the initial comparison controlled and repeatable.
+All policies use the same generated workload, hourly capacity limit, deadline windows, and carbon-intensity series within each trial. The deadline-aware policy is an offline heuristic because it sorts the full workload before scheduling; it is not a real-time scheduler.
 
 ## Run locally
 
@@ -17,7 +18,21 @@ From the repository root, with the project's Python dependencies installed:
 python .\research\carbon_experiment.py
 ```
 
-The script writes:
+Run the repeated-seed evaluation (30 paired synthetic trials) from the repository root:
+
+```powershell
+python .\\research\\multi_seed_experiment.py
+```
+
+Run the automated regression tests from the repository root:
+
+```powershell
+python -m unittest discover -s research/tests -v
+```
+
+The tests cover reproducibility, carbon-profile bounds, deadline and capacity constraints, emissions calculations, invalid policy names, and regression behavior across the 30 evaluation seeds.
+
+The single-run script writes:
 
 - `research/results/experiment_summary.csv` — aggregate completion, energy, and emissions metrics.
 - `research/results/job_schedules.csv` — per-job scheduling decisions and calculated emissions.
@@ -36,7 +51,7 @@ Generated results are local experiment outputs and are not required to run the s
 
 ## Next research steps
 
-1. Add unit tests and repeated-seed evaluation.
+1. Extend tests as the simulator's constraints and scheduling policies evolve.
 2. Add a configurable power/cooling model and service-level constraints.
 3. Add a clearly documented measured or authoritative time-series for grid carbon intensity, if available.
 4. Compare against stronger baselines and report uncertainty across trials.
