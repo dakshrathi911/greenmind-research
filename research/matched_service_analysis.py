@@ -20,14 +20,6 @@ try:  # Support both package imports in tests and direct script execution.
         generate_workload,
         run_policy,
     )
-    from .sensitivity_analysis import (
-        CARBON_VARIABILITY,
-        HOURLY_CAPACITIES,
-        PUE_SCENARIOS,
-        WORKLOAD_COUNTS,
-        rescale_profile,
-        vary_carbon,
-    )
 except ImportError:  # python research/matched_service_analysis.py
     from carbon_experiment import (
         generate_carbon_intensity,
@@ -35,14 +27,31 @@ except ImportError:  # python research/matched_service_analysis.py
         generate_workload,
         run_policy,
     )
-    from sensitivity_analysis import (
-        CARBON_VARIABILITY,
-        HOURLY_CAPACITIES,
-        PUE_SCENARIOS,
-        WORKLOAD_COUNTS,
-        rescale_profile,
-        vary_carbon,
-    )
+
+PUE_SCENARIOS = {
+    "low_overhead": (1.1, 1.3),
+    "standard_range": (1.1, 1.5),
+    "high_overhead": (1.3, 1.5),
+}
+CARBON_VARIABILITY = {"low": 0.5, "standard": 1.0, "high": 1.5}
+WORKLOAD_COUNTS = (180, 240, 300)
+HOURLY_CAPACITIES = (8, 12, 16)
+
+
+def rescale_profile(profile: np.ndarray, low: float, high: float) -> np.ndarray:
+    """Map a reproducible profile's relative shape into a requested range."""
+    minimum = float(np.min(profile))
+    maximum = float(np.max(profile))
+    if maximum == minimum:
+        return np.full_like(profile, (low + high) / 2, dtype=float)
+    normalized = (profile - minimum) / (maximum - minimum)
+    return low + normalized * (high - low)
+
+
+def vary_carbon(profile: np.ndarray, multiplier: float) -> np.ndarray:
+    """Scale deviations from the profile mean while respecting model bounds."""
+    mean = float(np.mean(profile))
+    return np.clip(mean + multiplier * (profile - mean), 0.15, 0.8)
 
 OUTPUT_DIR = Path(__file__).resolve().parent / "results"
 POLICIES = ("baseline", "carbon_aware", "deadline_carbon")
