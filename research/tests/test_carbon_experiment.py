@@ -68,6 +68,23 @@ class SchedulingPolicyTests(unittest.TestCase):
 
         self.assertTrue(np.all(used <= HOURLY_CAPACITY))
 
+    def test_configurable_hourly_capacity_is_enforced(self):
+        jobs = [
+            Job(job_id=1, arrival=0, deadline=1, work=5),
+            Job(job_id=2, arrival=0, deadline=1, work=5),
+            Job(job_id=3, arrival=0, deadline=1, work=5),
+        ]
+        result = run_policy(jobs, self.carbon, "baseline", hourly_capacity=8)
+        used = np.zeros(HOURS, dtype=int)
+        for row in result["schedule"]:
+            if row["status"] == "completed":
+                used[row["scheduled_hour"]] += row["work_units"]
+        self.assertTrue(np.all(used <= 8))
+
+    def test_nonpositive_hourly_capacity_raises_value_error(self):
+        with self.assertRaises(ValueError):
+            run_policy([], self.carbon, "baseline", hourly_capacity=0)
+
     def test_energy_and_emissions_match_scheduled_jobs(self):
         jobs = [
             Job(job_id=1, arrival=0, deadline=2, work=2),
