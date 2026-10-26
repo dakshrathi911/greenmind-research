@@ -1,10 +1,6 @@
 """
 GreenMind AI research experiment: carbon-aware workload scheduling.
 
-This experiment compares:
-- baseline: earliest feasible hour
-- carbon-aware heuristic: lowest-carbon feasible hour
-
 All workload and carbon-intensity inputs are synthetic. Results are
 illustrative and must not be reported as measured real-world savings.
 """
@@ -32,7 +28,7 @@ class Job:
 
 
 def generate_workload(seed: int = SEED, count: int = 240) -> list[Job]:
-    """Create a reproducible synthetic workload shared by both policies."""
+    """Create a reproducible synthetic workload shared by all policies."""
     rng = np.random.default_rng(seed)
     jobs = []
 
@@ -75,23 +71,26 @@ def run_policy(
     carbon: np.ndarray,
     policy: str,
     pue: np.ndarray | None = None,
+    hourly_capacity: int = HOURLY_CAPACITY,
 ) -> dict:
-    """Schedule jobs under a shared per-hour capacity constraint.
+    """Schedule jobs with a configurable hourly work-capacity limit.
 
     KWH_PER_WORK_UNIT models IT energy. Facility energy is IT energy multiplied
     by hourly PUE. If no PUE profile is supplied, PUE=1 preserves legacy tests.
-    
 
     Policies:
-    - baseline: process jobs in arrival order; use the earliest feasible hour
-    - carbon_aware: process jobs in arrival order; minimize modeled emissions
-    - deadline_carbon: process earliest deadlines first; minimize modeled
-      emissions among each job's feasible hours
+    - baseline: arrival order; earliest feasible hour
+    - carbon_aware: arrival order; lowest modeled-emissions feasible hour
+    - deadline_carbon: earliest-deadline-first; lowest-emissions feasible hour
+
+    deadline_carbon is an offline heuristic, not a real-time scheduler.
     """
     if pue is None:
         pue = np.ones(HOURS, dtype=float)
     if len(carbon) != HOURS or len(pue) != HOURS:
         raise ValueError(f"carbon and pue profiles must each contain {HOURS} values")
+    if hourly_capacity <= 0:
+        raise ValueError("hourly_capacity must be a positive integer")
 
     capacity = np.zeros(HOURS, dtype=int)
     schedule = []
@@ -112,7 +111,7 @@ def run_policy(
         candidates = [
             hour
             for hour in range(job.arrival, job.deadline + 1)
-            if capacity[hour] + job.work <= HOURLY_CAPACITY
+            if capacity[hour] + job.work <= hourly_capacity
         ]
 
         if not candidates:
@@ -127,6 +126,7 @@ def run_policy(
                     "status": "missed",
                     "carbon_intensity_kg_per_kwh": None,
                     "pue": None,
+                    "it_energy_kwh": 0.0,
                     "energy_kwh": 0.0,
                     "emissions_kg_co2": 0.0,
                 }
@@ -136,8 +136,6 @@ def run_policy(
         if policy == "baseline":
             chosen_hour = candidates[0]
         else:
-            # Minimize modeled facility emissions per work unit:
-            # IT energy × PUE × grid carbon intensity.
             chosen_hour = min(
                 candidates,
                 key=lambda hour: (
@@ -182,62 +180,44 @@ def run_policy(
         "schedule": schedule,
     }
 
+
 def main() -> None:
     OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
     jobs = generate_workload()
     carbon = generate_carbon_intensity()
     pue = generate_pue_profile()
 
-    baseline = run_policy(jobs, carbon, "baseline", pue)
-    carbon_aware = run_policy(jobs, carbon, "carbon_aware", pue)
-    deadline_carbon = run_policy(jobs, carbon, "deadline_carbon", pue)
-
-    baseline_emissions = baseline["emissions_kg_co2"]
-    aware_emissions = carbon_aware["emissions_kg_co2"]
-    deadline_emissions = deadline_carbon["emissions_kg_co2"]
-    reduction_pct = (
-        100.0 * (baseline_emissions - aware_emissions) / baseline_emissions
-        if baseline_emissions > 0
-        else 0.0
-    )
-    deadline_reduction_pct = (
-        100.0 * (baseline_emissions - deadline_emissions) / baseline_emissions
-        if baseline_emissions > 0
-        else 0.0
-    )
-
-    summary_rows = []
-    for result in (baseline, carbon_aware, deadline_carbon):
-        summary_rows.append(
-            {
-                key: value
-                for key, value in result.items()
-                if key != "schedule"
-            }
-        )
-
-    summary = pd.DataFrame(summary_rows)
-    summary["emissions_reduction_vs_baseline_pct"] = [
-        0.0, reduction_pct, deadline_reduction_pct
+    results = [
+        run_policy(jobs, carbon, policy, pue)
+        for policy in ("baseline", "carbon_aware", "deadline_carbon")
     ]
-    summary.to_csv(OUTPUT_DIR / "experiment_summary.csv", index=False)
+    baseline_emissions = results[0]["emissions_kg_co2"]
+    summary_rows = []
+    for result in results:
+        row = {key: value for key, value in result.items() if key != "schedule"}
+        row["emissions_reduction_vs_baseline_pct"] = (
+            100.0 * (baseline_emissions - result["emissions_kg_co2"]) / baseline_emissions
+            if baseline_emissions > 0 else 0.0
+        )
+        summary_rows.append(row)
 
-    schedule_rows = []
-    for result in (baseline, carbon_aware, deadline_carbon):
-        for row in result["schedule"]:
-            schedule_rows.append({"policy": result["policy"], **row})
-
+    pd.DataFrame(summary_rows).to_csv(
+        OUTPUT_DIR / "experiment_summary.csv", index=False
+    )
+    schedule_rows = [
+        {"policy": result["policy"], **row}
+        for result in results
+        for row in result["schedule"]
+    ]
     pd.DataFrame(schedule_rows).to_csv(
         OUTPUT_DIR / "job_schedules.csv", index=False
     )
 
     print("\nGREENMIND AI — CARBON SCHEDULING EXPERIMENT")
     print("=" * 52)
-    print(summary.to_string(index=False))
+    print(pd.DataFrame(summary_rows).to_string(index=False))
     print(f"\nResults saved in: {OUTPUT_DIR}")
-    print("  - experiment_summary.csv")
-    print("  - job_schedules.csv")
-    print("\nLimitations: synthetic workload, carbon intensity and PUE profiles;")
+    print("Limitations: synthetic workload, carbon intensity and PUE profiles;")
     print("fixed illustrative IT energy per work unit; no measured facility data.")
 
 
