@@ -3,55 +3,27 @@ __pycache__/
 *.py[cod]
 *.pyo
 
-# Virtual environment
+# Virtual environments and local secrets
 .venv/
 venv/
 env/
-
-# Environment variables / secrets
-.env
-
-# Jupyter
-.ipynb_checkpoints/
-
-# ML artifacts
-*.pt
-*.pth
-*.ckpt
-
-# Data
-data/raw/
-data/processed/
-
-# VS Code
-.vscode/
-
-# OS
-.DS_Store
-Thumbs.db
-
-
-# Node
-node_modules/
-dist/# Python
-__pycache__/
-*.py[cod]
-.venv/
-
-# Environment
 .env
 .env.*
 
-# Large datasets
+# Generated data and model artifacts (recreate using the documented pipeline)
 data/raw/
 data/processed/
-
-# Trained ML models
 models/*.joblib
 
-# Jupyter
-.ipynb_checkpoints/
+# Frontend dependencies and build output
+node_modules/
+frontend/node_modules/
+dist/
+frontend/dist/
 
-# IDE
+# Editors and operating systems
 .vscode/
 .idea/
+.ipynb_checkpoints/
+.DS_Store
+Thumbs.db
