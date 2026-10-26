@@ -97,6 +97,22 @@ def main() -> None:
                                 "deadline_carbon_emissions_kg_co2": deadline["emissions_kg_co2"],
                                 "carbon_aware_reduction_pct": reduction(float(aware["emissions_kg_co2"])),
                                 "deadline_carbon_reduction_pct": reduction(float(deadline["emissions_kg_co2"])),
+                                "baseline_total_work_units": baseline["total_work_units"],
+                                "baseline_completed_work_units": baseline["completed_work_units"],
+                                "carbon_aware_completed_work_units": aware["completed_work_units"],
+                                "deadline_carbon_completed_work_units": deadline["completed_work_units"],
+                                "baseline_work_completion_rate_pct": baseline["work_completion_rate_pct"],
+                                "carbon_aware_work_completion_rate_pct": aware["work_completion_rate_pct"],
+                                "deadline_carbon_work_completion_rate_pct": deadline["work_completion_rate_pct"],
+                                "baseline_emissions_per_completed_work_unit": baseline[
+                                    "emissions_kg_co2_per_completed_work_unit"
+                                ],
+                                "carbon_aware_emissions_per_completed_work_unit": aware[
+                                    "emissions_kg_co2_per_completed_work_unit"
+                                ],
+                                "deadline_carbon_emissions_per_completed_work_unit": deadline[
+                                    "emissions_kg_co2_per_completed_work_unit"
+                                ],
                                 "baseline_jobs_missed": baseline["jobs_missed"],
                                 "carbon_aware_jobs_missed": aware["jobs_missed"],
                                 "deadline_carbon_jobs_missed": deadline["jobs_missed"],
@@ -127,6 +143,12 @@ def main() -> None:
             mean_baseline_completion_pct=("baseline_completion_rate_pct", "mean"),
             mean_carbon_aware_completion_pct=("carbon_aware_completion_rate_pct", "mean"),
             mean_deadline_carbon_completion_pct=("deadline_carbon_completion_rate_pct", "mean"),
+            mean_baseline_work_completion_pct=("baseline_work_completion_rate_pct", "mean"),
+            mean_carbon_aware_work_completion_pct=("carbon_aware_work_completion_rate_pct", "mean"),
+            mean_deadline_carbon_work_completion_pct=("deadline_carbon_work_completion_rate_pct", "mean"),
+            baseline_completed_work_units=("baseline_completed_work_units", "sum"),
+            carbon_aware_completed_work_units=("carbon_aware_completed_work_units", "sum"),
+            deadline_carbon_completed_work_units=("deadline_carbon_completed_work_units", "sum"),
         )
     )
 
