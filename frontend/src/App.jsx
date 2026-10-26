@@ -64,6 +64,31 @@ function App() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [activeInsight, setActiveInsight] = useState("overview");
+  const [activeTab, setActiveTab] = useState("dashboard");
+  const [researchData, setResearchData] = useState(null);
+  const [researchLoading, setResearchLoading] = useState(false);
+  const [researchError, setResearchError] = useState("");
+
+  async function loadResearchData() {
+    try {
+      setResearchLoading(true);
+      const response = await fetch("http://127.0.0.1:8000/api/research/summary");
+      if (!response.ok) throw new Error(`Backend returned ${response.status}`);
+      const data = await response.json();
+      setResearchData(data);
+      setResearchError(data.available ? "" : "No generated research result files were found. Run the research scripts first.");
+    } catch (err) {
+      console.error("Research results error:", err);
+      setResearchError("Unable to load research results. Check that the backend is running.");
+    } finally {
+      setResearchLoading(false);
+    }
+  }
+
+  useEffect(() => {
+    loadResearchData();
+  }, []);
+
 
   function refreshDashboard() {
     loadDashboard();
@@ -270,6 +295,18 @@ function App() {
             <div><strong>Live monitoring</strong><small>Auto-refreshes every 30 seconds</small></div>
           </div>
         </section>
+
+        <nav className="view-tabs" aria-label="Dashboard views">
+          <button className={activeTab === "dashboard" ? "view-tab active" : "view-tab"} onClick={() => setActiveTab("dashboard")}>
+            <span>01</span><strong>Original Dashboard</strong><small>Updated energy model</small>
+          </button>
+          <button className={activeTab === "research" ? "view-tab active" : "view-tab"} onClick={() => { setActiveTab("research"); loadResearchData(); }}>
+            <span>02</span><strong>Research Data</strong><small>Scheduling simulations</small>
+          </button>
+        </nav>
+
+        {activeTab === "dashboard" ? (
+          <>
 
         {/* METRICS */}
         <section className="metrics-grid">
@@ -1692,6 +1729,67 @@ function App() {
 
             )}
 
+          </section>
+        )}
+
+
+
+          </>
+        ) : (
+          <section className="research-view">
+            <div className="research-heading">
+              <div>
+                <span className="intro-eyebrow">GREENMIND AI / EXPERIMENTS</span>
+                <h2>Carbon-aware scheduling results</h2>
+                <p>Latest locally generated experiment outputs, kept separate from the energy dashboard.</p>
+              </div>
+              <button className="refresh-control" onClick={loadResearchData} disabled={researchLoading}>
+                <span aria-hidden="true">↻</span>{researchLoading ? "Refreshing..." : "Refresh results"}
+              </button>
+            </div>
+            <div className="research-data-note">
+              <strong>Simulation data only</strong>
+              <span>{researchData?.source_note || "Synthetic workloads and carbon/PUE profiles; not live facility measurements."}</span>
+              <small>Latest result file update: {researchData?.generated_at ? new Date(researchData.generated_at).toLocaleString() : "Not available"}</small>
+            </div>
+            {researchError && <div className="research-message">{researchError}</div>}
+            {researchLoading && !researchData ? <div className="research-message">Loading generated results…</div> : null}
+            {researchData && (
+              <>
+                <div className="research-kpi-grid">
+                  <div className="research-kpi"><span>MEAN CARBON-AWARE REDUCTION</span><strong>{formatNumber(researchData.overall_summary?.[0]?.mean_emissions_reduction_pct ?? researchData.policy_summary?.find((x) => x.policy === "carbon_aware")?.mean_emissions_reduction_pct, 2)}%</strong><small>Across 30 paired trials</small></div>
+                  <div className="research-kpi"><span>DEADLINE-CARBON REDUCTION</span><strong>{formatNumber(researchData.overall_summary?.[0]?.mean_deadline_carbon_reduction_pct ?? researchData.policy_summary?.find((x) => x.policy === "deadline_carbon")?.mean_emissions_reduction_pct, 2)}%</strong><small>Mean simulated reduction</small></div>
+                  <div className="research-kpi"><span>SENSITIVITY SCENARIOS</span><strong>{formatNumber(researchData.sensitivity?.length)}</strong><small>Scenario configurations</small></div>
+                  <div className="research-kpi"><span>FDR-SIGNIFICANT COMPARISONS</span><strong>{formatNumber(researchData.matched_service?.filter((x) => x.significant_fdr_0_05 === true || x.significant_fdr_0_05 === "True").length)}</strong><small>After multiple-test correction</small></div>
+                </div>
+                <div className="research-panel">
+                  <div className="panel-header"><div><h2>Single-run policy comparison</h2><p>Latest carbon experiment output</p></div></div>
+                  <div className="research-table-wrap"><table className="research-table"><thead><tr><th>Policy</th><th>Jobs completed</th><th>Completion</th><th>Energy (kWh)</th><th>Emissions (kg CO₂)</th><th>Reduction</th></tr></thead><tbody>
+                    {(researchData.single_run || []).map((row) => <tr key={row.policy}><td>{String(row.policy).replaceAll("_", " ")}</td><td>{formatNumber(row.jobs_completed)} / {formatNumber(row.jobs_total)}</td><td>{formatNumber(row.completion_rate_pct, 2)}%</td><td>{formatNumber(row.energy_kwh, 2)}</td><td>{formatNumber(row.emissions_kg_co2, 2)}</td><td>{formatNumber(row.emissions_reduction_vs_baseline_pct, 2)}%</td></tr>)}
+                  </tbody></table></div>
+                </div>
+                <div className="research-panel">
+                  <div className="panel-header"><div><h2>Repeated-seed evaluation</h2><p>Policy averages from regenerated paired trials</p></div></div>
+                  <div className="research-table-wrap"><table className="research-table"><thead><tr><th>Policy</th><th>Trials</th><th>Mean emissions (kg)</th><th>Std. dev.</th><th>Mean energy (kWh)</th><th>Completion rate</th><th>Jobs missed</th></tr></thead><tbody>
+                    {(researchData.policy_summary || []).map((row) => <tr key={row.policy}><td>{String(row.policy).replaceAll("_", " ")}</td><td>{formatNumber(row.trials)}</td><td>{formatNumber(row.mean_emissions_kg_co2, 2)}</td><td>{formatNumber(row.std_emissions_kg_co2, 2)}</td><td>{formatNumber(row.mean_energy_kwh, 2)}</td><td>{formatNumber(row.mean_completion_rate_pct, 3)}%</td><td>{formatNumber(row.total_jobs_missed)}</td></tr>)}
+                  </tbody></table></div>
+                </div>
+                <div className="research-panel">
+                  <div className="panel-header"><div><h2>Top sensitivity scenarios</h2><p>Highest mean deadline-carbon emissions reductions</p></div></div>
+                  <div className="research-table-wrap"><table className="research-table"><thead><tr><th>PUE scenario</th><th>Carbon variability</th><th>Jobs</th><th>Capacity</th><th>Carbon-aware reduction</th><th>Deadline-carbon reduction</th><th>Deadline work completion</th></tr></thead><tbody>
+                    {[...(researchData.sensitivity || [])].sort((x, y) => Number(y.mean_deadline_carbon_reduction_pct || 0) - Number(x.mean_deadline_carbon_reduction_pct || 0)).slice(0, 10).map((row, index) => <tr key={`${row.pue_scenario}-${row.carbon_variability}-${row.job_count}-${row.hourly_capacity}-${index}`}><td>{row.pue_scenario}</td><td>{row.carbon_variability}</td><td>{formatNumber(row.job_count)}</td><td>{formatNumber(row.hourly_capacity)}</td><td>{formatNumber(row.mean_carbon_aware_reduction_pct, 2)}%</td><td>{formatNumber(row.mean_deadline_carbon_reduction_pct, 2)}%</td><td>{formatNumber(row.mean_deadline_carbon_work_completion_pct, 2)}%</td></tr>)}
+                  </tbody></table></div>
+                </div>
+                <div className="research-panel">
+                  <div className="panel-header"><div><h2>Matched-service analysis</h2><p>Emissions compared on work completed by all three policies</p></div></div>
+                  <p className="research-explainer">This comparison reports common-work coverage alongside emissions reduction. Statistical significance uses Benjamini–Hochberg false-discovery-rate correction; it does not establish real-world savings.</p>
+                  <div className="research-table-wrap"><table className="research-table"><thead><tr><th>PUE scenario</th><th>Carbon variability</th><th>Jobs</th><th>Capacity</th><th>Common work coverage</th><th>Carbon-aware reduction</th><th>Deadline-carbon reduction</th><th>FDR adjusted p</th><th>Significant</th></tr></thead><tbody>
+                    {[...(researchData.matched_service || [])].sort((x, y) => Number(x.fdr_adjusted_p_value || 1) - Number(y.fdr_adjusted_p_value || 1)).slice(0, 20).map((row, index) => <tr key={`${row.pue_scenario}-${row.carbon_variability}-${row.job_count}-${row.hourly_capacity}-${index}`}><td>{row.pue_scenario}</td><td>{row.carbon_variability}</td><td>{formatNumber(row.job_count)}</td><td>{formatNumber(row.hourly_capacity)}</td><td>{formatNumber(row.mean_common_work_coverage_pct, 2)}%</td><td>{formatNumber(row.mean_carbon_aware_matched_reduction_pct, 2)}%</td><td>{formatNumber(row.mean_deadline_carbon_matched_reduction_pct, 2)}%</td><td>{formatNumber(row.fdr_adjusted_p_value, 4)}</td><td>{row.significant_fdr_0_05 === true || row.significant_fdr_0_05 === "True" ? "Yes" : "No"}</td></tr>)}
+                  </tbody></table></div>
+                  <p className="research-explainer">Showing the 20 comparisons with the smallest FDR-adjusted p-values, out of {formatNumber(researchData.matched_service?.length)} scenarios.</p>
+                </div>
+              </>
+            )}
           </section>
         )}
 
