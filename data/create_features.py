@@ -24,212 +24,90 @@ OUTPUT_FILE = (
 )
 
 
-print("=" * 60)
-print("GREENMIND AI - FEATURE ENGINEERING")
-print("=" * 60)
+def build_features(df: pd.DataFrame) -> pd.DataFrame:
+    """Build leakage-safe features for a one-hour-ahead energy forecast.
+
+    Each input row at time t predicts the energy value at t+1 hour.
+    Therefore calendar fields describe t+1, while lag and rolling
+    features use only observations available through time t.
+    """
+    df = df.copy()
+    df["timestamp"] = pd.to_datetime(df["timestamp"])
+    df = df.sort_values("timestamp").reset_index(drop=True)
+
+    target_timestamp = df["timestamp"] + pd.Timedelta(hours=1)
+    df["hour"] = target_timestamp.dt.hour
+    df["day_of_week"] = target_timestamp.dt.day_of_week
+    df["day_of_month"] = target_timestamp.dt.day
+    df["month"] = target_timestamp.dt.month
+    df["is_weekend"] = (df["day_of_week"] >= 5).astype(int)
+
+    # At time t, the latest observed value is the one-hour-ahead
+    # target's lag_1. The 24h and 168h lags are aligned to t+1.
+    df["lag_1"] = df["total_energy"]
+    df["lag_24"] = df["total_energy"].shift(23)
+    df["lag_168"] = df["total_energy"].shift(167)
+
+    # Rolling windows include the latest known observation at t.
+    df["rolling_mean_24"] = df["total_energy"].rolling(window=24).mean()
+    df["rolling_std_24"] = df["total_energy"].rolling(window=24).std()
+    df["rolling_mean_168"] = df["total_energy"].rolling(window=168).mean()
+
+    # Predict the next observed hour.
+    df["target"] = df["total_energy"].shift(-1)
+
+    feature_columns = [
+        "timestamp",
+        "hour",
+        "day_of_week",
+        "day_of_month",
+        "month",
+        "is_weekend",
+        "lag_1",
+        "lag_24",
+        "lag_168",
+        "rolling_mean_24",
+        "rolling_std_24",
+        "rolling_mean_168",
+        "target",
+    ]
+
+    return df[feature_columns].dropna().reset_index(drop=True)
 
 
-# --------------------------------------------
-# Check input
-# --------------------------------------------
+def main() -> None:
+    print("=" * 60)
+    print("GREENMIND AI - FEATURE ENGINEERING")
+    print("=" * 60)
 
-if not INPUT_FILE.exists():
-    raise FileNotFoundError(
-        f"Processed dataset not found:\n{INPUT_FILE}"
-    )
+    if not INPUT_FILE.exists():
+        raise FileNotFoundError(f"Processed dataset not found:\n{INPUT_FILE}")
 
+    print("\n[1/5] Loading hourly energy data...")
+    source = pd.read_csv(INPUT_FILE, parse_dates=["timestamp"])
+    print(f"Loaded {len(source):,} hourly observations.")
 
-# --------------------------------------------
-# Load hourly data
-# --------------------------------------------
+    print("\n[2/5] Creating next-hour calendar features...")
+    print("\n[3/5] Creating correctly aligned historical lag features...")
+    print("\n[4/5] Creating rolling statistics and prediction target...")
+    features = build_features(source)
 
-print("\n[1/5] Loading hourly energy data...")
+    OUTPUT_FILE.parent.mkdir(parents=True, exist_ok=True)
+    features.to_csv(OUTPUT_FILE, index=False)
 
-df = pd.read_csv(
-    INPUT_FILE,
-    parse_dates=["timestamp"]
-)
-
-df = df.sort_values(
-    "timestamp"
-).reset_index(drop=True)
-
-print(
-    f"Loaded {len(df):,} hourly observations."
-)
-
-
-# --------------------------------------------
-# Calendar features for the NEXT-hour target
-# --------------------------------------------
-
-print("\n[2/5] Creating next-hour calendar features...")
-
-target_timestamp = df["timestamp"] + pd.Timedelta(hours=1)
-
-df["hour"] = target_timestamp.dt.hour
-
-df["day_of_week"] = target_timestamp.dt.dayofweek
-
-df["day_of_month"] = target_timestamp.dt.day
-
-df["month"] = target_timestamp.dt.month
-
-df["is_weekend"] = (
-    df["day_of_week"] >= 5
-).astype(int)
+    print("\n" + "=" * 60)
+    print("FEATURE ENGINEERING COMPLETE")
+    print("=" * 60)
+    print(f"\nOutput file:\n{OUTPUT_FILE}")
+    print(f"\nTraining observations: {len(features):,}")
+    print(f"Features: {len(features.columns) - 2}")
+    print(f"\nDate range:\n{features['timestamp'].min()} → {features['timestamp'].max()}")
+    print("\nColumns:")
+    for column in features.columns:
+        print(f"  - {column}")
+    print("\nFirst 5 rows:")
+    print(features.head().to_string(index=False))
 
 
-# --------------------------------------------
-# Lag features
-# --------------------------------------------
-
-print("\n[3/5] Creating historical lag features...")
-
-# Previous hour
-df["lag_1"] = (
-    df["total_energy"].shift(1)
-)
-
-# Same hour on the previous day
-df["lag_24"] = (
-    df["total_energy"].shift(24)
-)
-
-# Same hour one week ago
-df["lag_168"] = (
-    df["total_energy"].shift(168)
-)
-
-
-# --------------------------------------------
-# Rolling features
-# --------------------------------------------
-
-print("\n[4/5] Creating rolling statistics...")
-
-# Previous 24 hours
-df["rolling_mean_24"] = (
-    df["total_energy"]
-    .shift(1)
-    .rolling(window=24)
-    .mean()
-)
-
-df["rolling_std_24"] = (
-    df["total_energy"]
-    .shift(1)
-    .rolling(window=24)
-    .std()
-)
-
-# Previous 7 days
-df["rolling_mean_168"] = (
-    df["total_energy"]
-    .shift(1)
-    .rolling(window=168)
-    .mean()
-)
-
-
-# --------------------------------------------
-# Target
-# --------------------------------------------
-
-print("Creating prediction target...")
-
-# The model will predict the NEXT hour.
-df["target"] = (
-    df["total_energy"].shift(-1)
-)
-
-
-# --------------------------------------------
-# Remove rows that cannot have complete
-# historical features
-# --------------------------------------------
-
-print("Removing incomplete feature rows...")
-
-df = df.dropna().reset_index(
-    drop=True
-)
-
-
-# --------------------------------------------
-# Select columns
-# --------------------------------------------
-
-feature_columns = [
-    "timestamp",
-    "hour",
-    "day_of_week",
-    "day_of_month",
-    "month",
-    "is_weekend",
-    "lag_1",
-    "lag_24",
-    "lag_168",
-    "rolling_mean_24",
-    "rolling_std_24",
-    "rolling_mean_168",
-    "target",
-]
-
-df = df[feature_columns]
-
-
-# --------------------------------------------
-# Save
-# --------------------------------------------
-
-df.to_csv(
-    OUTPUT_FILE,
-    index=False
-)
-
-
-# --------------------------------------------
-# Summary
-# --------------------------------------------
-
-print("\n" + "=" * 60)
-print("FEATURE ENGINEERING COMPLETE")
-print("=" * 60)
-
-print(
-    f"\nOutput file:\n{OUTPUT_FILE}"
-)
-
-print(
-    f"\nTraining observations: "
-    f"{len(df):,}"
-)
-
-print(
-    f"Features: "
-    f"{len(feature_columns) - 2}"
-)
-
-print(
-    f"\nDate range:"
-)
-
-print(
-    f"{df['timestamp'].min()} "
-    f"→ "
-    f"{df['timestamp'].max()}"
-)
-
-print("\nColumns:")
-
-for column in df.columns:
-    print(f"  - {column}")
-
-print("\nFirst 5 rows:")
-
-print(
-    df.head().to_string(
-        index=False
-    )
-)
+if __name__ == "__main__":
+    main()
