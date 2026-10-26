@@ -240,55 +240,45 @@ def build_prediction_features(df):
 
     data = df.copy()
 
-    data["hour"] = (
-        data["timestamp"].dt.hour
-    )
+    # Forecast the next observation: calendar fields belong to t+1,
+    # while historical statistics must include the latest observed value at t.
+    target_timestamp = data["timestamp"] + pd.Timedelta(hours=1)
 
-    data["day_of_week"] = (
-        data["timestamp"].dt.dayofweek
-    )
+    data["hour"] = target_timestamp.dt.hour
 
-    data["day_of_month"] = (
-        data["timestamp"].dt.day
-    )
+    data["day_of_week"] = target_timestamp.dt.dayofweek
 
-    data["month"] = (
-        data["timestamp"].dt.month
-    )
+    data["day_of_month"] = target_timestamp.dt.day
+
+    data["month"] = target_timestamp.dt.month
 
     data["is_weekend"] = (
         data["day_of_week"] >= 5
     ).astype(int)
 
-    data["lag_1"] = (
-        data["total_energy"].shift(1)
-    )
+    # At row t, predict energy at t+1. Thus the latest observation is lag_1.
+    data["lag_1"] = data["total_energy"]
 
-    data["lag_24"] = (
-        data["total_energy"].shift(24)
-    )
+    # Same target hour on the previous day/week.
+    data["lag_24"] = data["total_energy"].shift(23)
 
-    data["lag_168"] = (
-        data["total_energy"].shift(168)
-    )
+    data["lag_168"] = data["total_energy"].shift(167)
 
+    # Historical windows end at the latest observed hour (inclusive).
     data["rolling_mean_24"] = (
         data["total_energy"]
-        .shift(1)
         .rolling(24)
         .mean()
     )
 
     data["rolling_std_24"] = (
         data["total_energy"]
-        .shift(1)
         .rolling(24)
         .std()
     )
 
     data["rolling_mean_168"] = (
         data["total_energy"]
-        .shift(1)
         .rolling(168)
         .mean()
     )
