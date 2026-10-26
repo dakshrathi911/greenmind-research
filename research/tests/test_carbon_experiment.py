@@ -10,6 +10,7 @@ from research.carbon_experiment import (
     KWH_PER_WORK_UNIT,
     Job,
     generate_carbon_intensity,
+    generate_pue_profile,
     generate_workload,
     run_policy,
 )
@@ -29,6 +30,14 @@ class WorkloadGenerationTests(unittest.TestCase):
         self.assertEqual(len(first), HOURS)
         self.assertTrue(np.all(first >= 0.15))
         self.assertTrue(np.all(first <= 0.8))
+
+    def test_pue_profile_is_reproducible_and_bounded(self):
+        first = generate_pue_profile(seed=9)
+        second = generate_pue_profile(seed=9)
+        np.testing.assert_array_equal(first, second)
+        self.assertEqual(len(first), HOURS)
+        self.assertTrue(np.all(first >= 1.1))
+        self.assertTrue(np.all(first <= 1.5))
 
 
 class SchedulingPolicyTests(unittest.TestCase):
@@ -74,12 +83,33 @@ class SchedulingPolicyTests(unittest.TestCase):
         self.assertAlmostEqual(result["energy_kwh"], expected_energy)
         self.assertAlmostEqual(result["emissions_kg_co2"], expected_emissions)
 
+    def test_pue_scales_facility_energy_and_emissions(self):
+        jobs = [Job(job_id=1, arrival=0, deadline=0, work=2)]
+        pue = np.full(HOURS, 1.3)
+        result = run_policy(jobs, self.carbon, "baseline", pue)
+        row = result["schedule"][0]
+        expected_it_energy = 2 * KWH_PER_WORK_UNIT
+        self.assertAlmostEqual(row["it_energy_kwh"], expected_it_energy)
+        self.assertAlmostEqual(row["energy_kwh"], expected_it_energy * 1.3)
+        self.assertAlmostEqual(
+            result["emissions_kg_co2"],
+            row["energy_kwh"] * row["carbon_intensity_kg_per_kwh"],
+        )
+
+    def test_invalid_profile_lengths_raise_value_error(self):
+        jobs = [Job(job_id=1, arrival=0, deadline=0, work=1)]
+        with self.assertRaises(ValueError):
+            run_policy(jobs, self.carbon[:-1], "baseline")
+        with self.assertRaises(ValueError):
+            run_policy(jobs, self.carbon, "baseline", np.ones(HOURS - 1))
+
     def test_deadline_carbon_regression_for_seed_28(self):
         jobs = generate_workload(seed=28)
         carbon = generate_carbon_intensity(seed=29)
-        baseline = run_policy(jobs, carbon, "baseline")
-        carbon_aware = run_policy(jobs, carbon, "carbon_aware")
-        deadline_carbon = run_policy(jobs, carbon, "deadline_carbon")
+        pue = generate_pue_profile(seed=30)
+        baseline = run_policy(jobs, carbon, "baseline", pue)
+        carbon_aware = run_policy(jobs, carbon, "carbon_aware", pue)
+        deadline_carbon = run_policy(jobs, carbon, "deadline_carbon", pue)
 
         self.assertEqual(baseline["jobs_missed"], 0)
         self.assertEqual(carbon_aware["jobs_missed"], 1)
@@ -94,7 +124,8 @@ class SchedulingPolicyTests(unittest.TestCase):
             with self.subTest(seed=seed):
                 jobs = generate_workload(seed=seed, count=240)
                 carbon = generate_carbon_intensity(seed=seed + 1)
-                result = run_policy(jobs, carbon, "deadline_carbon")
+                pue = generate_pue_profile(seed=seed + 2)
+                result = run_policy(jobs, carbon, "deadline_carbon", pue)
                 self.assertEqual(result["jobs_missed"], 0)
 
 
