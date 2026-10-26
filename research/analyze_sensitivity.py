@@ -32,6 +32,16 @@ required = scenario_cols + [
     "baseline_completion_rate_pct",
     "carbon_aware_completion_rate_pct",
     "deadline_carbon_completion_rate_pct",
+    "baseline_total_work_units",
+    "baseline_completed_work_units",
+    "carbon_aware_completed_work_units",
+    "deadline_carbon_completed_work_units",
+    "baseline_work_completion_rate_pct",
+    "carbon_aware_work_completion_rate_pct",
+    "deadline_carbon_work_completion_rate_pct",
+    "baseline_emissions_per_completed_work_unit",
+    "carbon_aware_emissions_per_completed_work_unit",
+    "deadline_carbon_emissions_per_completed_work_unit",
 ]
 
 missing = [col for col in required if col not in df.columns]
@@ -95,6 +105,15 @@ for keys, group in df.groupby(scenario_cols, dropna=False):
     ]:
         row[col] = group[col].sum()
 
+    for policy, completed_col, rate_col, intensity_col in [
+        ("baseline", "baseline_completed_work_units", "baseline_work_completion_rate_pct", "baseline_emissions_per_completed_work_unit"),
+        ("carbon_aware", "carbon_aware_completed_work_units", "carbon_aware_work_completion_rate_pct", "carbon_aware_emissions_per_completed_work_unit"),
+        ("deadline_carbon", "deadline_carbon_completed_work_units", "deadline_carbon_work_completion_rate_pct", "deadline_carbon_emissions_per_completed_work_unit"),
+    ]:
+        row[f"{policy}_completed_work_units"] = group[completed_col].sum()
+        row[f"mean_{policy}_work_completion_rate_pct"] = group[rate_col].mean()
+        row[f"mean_{policy}_emissions_per_completed_work_unit"] = group[intensity_col].mean()
+
     rows.append(row)
 
 scenario_summary = pd.DataFrame(rows)
@@ -108,26 +127,31 @@ scenario_summary.to_csv(
 
 policies = {
     "Baseline": (
-        "baseline_jobs_missed",
-        "baseline_completion_rate_pct",
+        "baseline_jobs_missed", "baseline_completion_rate_pct",
+        "baseline_completed_work_units", "baseline_work_completion_rate_pct",
+        "baseline_emissions_per_completed_work_unit",
     ),
     "Carbon-aware": (
-        "carbon_aware_jobs_missed",
-        "carbon_aware_completion_rate_pct",
+        "carbon_aware_jobs_missed", "carbon_aware_completion_rate_pct",
+        "carbon_aware_completed_work_units", "carbon_aware_work_completion_rate_pct",
+        "carbon_aware_emissions_per_completed_work_unit",
     ),
     "Deadline-carbon": (
-        "deadline_carbon_jobs_missed",
-        "deadline_carbon_completion_rate_pct",
+        "deadline_carbon_jobs_missed", "deadline_carbon_completion_rate_pct",
+        "deadline_carbon_completed_work_units", "deadline_carbon_work_completion_rate_pct",
+        "deadline_carbon_emissions_per_completed_work_unit",
     ),
 }
 
 overall_rows = []
 
 total_jobs = df["job_count"].sum()
+total_work_units = df["baseline_total_work_units"].sum()
 
-for policy, (miss_col, completion_col) in policies.items():
+for policy, (miss_col, completion_col, work_col, work_rate_col, intensity_col) in policies.items():
     missed = df[miss_col].sum()
     completed = total_jobs - missed
+    completed_work = df[work_col].sum()
 
     overall_rows.append({
         "policy": policy,
@@ -138,9 +162,15 @@ for policy, (miss_col, completion_col) in policies.items():
         "completion_rate_pct_from_missed_jobs": (
             100 * completed / total_jobs if total_jobs else np.nan
         ),
-        "mean_reported_completion_rate_pct": df[
-            completion_col
-        ].mean(),
+        "mean_reported_completion_rate_pct": df[completion_col].mean(),
+        "total_work_units_across_trials": int(total_work_units),
+        "completed_work_units": int(completed_work),
+        "missed_work_units": int(total_work_units - completed_work),
+        "work_completion_rate_pct": (
+            100 * completed_work / total_work_units if total_work_units else np.nan
+        ),
+        "mean_reported_work_completion_rate_pct": df[work_rate_col].mean(),
+        "mean_emissions_per_completed_work_unit": df[intensity_col].mean(),
     })
 
 overall_summary = pd.DataFrame(overall_rows)
