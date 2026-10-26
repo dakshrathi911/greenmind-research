@@ -13,20 +13,36 @@ import numpy as np
 import pandas as pd
 from scipy import stats
 
-from carbon_experiment import (
-    generate_carbon_intensity,
-    generate_pue_profile,
-    generate_workload,
-    run_policy,
-)
-from sensitivity_analysis import (
-    CARBON_VARIABILITY,
-    HOURLY_CAPACITIES,
-    PUE_SCENARIOS,
-    WORKLOAD_COUNTS,
-    rescale_profile,
-    vary_carbon,
-)
+try:  # Support both package imports in tests and direct script execution.
+    from .carbon_experiment import (
+        generate_carbon_intensity,
+        generate_pue_profile,
+        generate_workload,
+        run_policy,
+    )
+    from .sensitivity_analysis import (
+        CARBON_VARIABILITY,
+        HOURLY_CAPACITIES,
+        PUE_SCENARIOS,
+        WORKLOAD_COUNTS,
+        rescale_profile,
+        vary_carbon,
+    )
+except ImportError:  # python research/matched_service_analysis.py
+    from carbon_experiment import (
+        generate_carbon_intensity,
+        generate_pue_profile,
+        generate_workload,
+        run_policy,
+    )
+    from sensitivity_analysis import (
+        CARBON_VARIABILITY,
+        HOURLY_CAPACITIES,
+        PUE_SCENARIOS,
+        WORKLOAD_COUNTS,
+        rescale_profile,
+        vary_carbon,
+    )
 
 OUTPUT_DIR = Path(__file__).resolve().parent / "results"
 POLICIES = ("baseline", "carbon_aware", "deadline_carbon")
