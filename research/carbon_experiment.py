@@ -61,8 +61,26 @@ def generate_carbon_intensity(seed: int = SEED + 1) -> np.ndarray:
     return np.clip(daily_pattern + variation, 0.15, 0.8)
 
 
-def run_policy(jobs: list[Job], carbon: np.ndarray, policy: str) -> dict:
+def generate_pue_profile(seed: int = SEED + 2) -> np.ndarray:
+    """Return a synthetic hourly PUE profile; not measured facility data."""
+    rng = np.random.default_rng(seed)
+    hours = np.arange(HOURS)
+    daily_pattern = 1.25 + 0.06 * np.sin(2 * np.pi * (hours - 3) / 24)
+    variation = rng.normal(0, 0.015, HOURS)
+    return np.clip(daily_pattern + variation, 1.1, 1.5)
+
+
+def run_policy(
+    jobs: list[Job],
+    carbon: np.ndarray,
+    policy: str,
+    pue: np.ndarray | None = None,
+) -> dict:
     """Schedule jobs under a shared per-hour capacity constraint.
+
+    KWH_PER_WORK_UNIT models IT energy. Facility energy is IT energy multiplied
+    by hourly PUE. If no PUE profile is supplied, PUE=1 preserves legacy tests.
+    
 
     Policies:
     - baseline: process jobs in arrival order; use the earliest feasible hour
@@ -70,6 +88,11 @@ def run_policy(jobs: list[Job], carbon: np.ndarray, policy: str) -> dict:
     - deadline_carbon: process earliest deadlines first; use the lowest-carbon
       feasible hour for each job
     """
+    if pue is None:
+        pue = np.ones(HOURS, dtype=float)
+    if len(carbon) != HOURS or len(pue) != HOURS:
+        raise ValueError(f"carbon and pue profiles must each contain {HOURS} values")
+
     capacity = np.zeros(HOURS, dtype=int)
     schedule = []
     total_energy = 0.0
@@ -103,6 +126,7 @@ def run_policy(jobs: list[Job], carbon: np.ndarray, policy: str) -> dict:
                     "scheduled_hour": None,
                     "status": "missed",
                     "carbon_intensity_kg_per_kwh": None,
+                    "pue": None,
                     "energy_kwh": 0.0,
                     "emissions_kg_co2": 0.0,
                 }
@@ -112,12 +136,20 @@ def run_policy(jobs: list[Job], carbon: np.ndarray, policy: str) -> dict:
         if policy == "baseline":
             chosen_hour = candidates[0]
         else:
+            # Minimize modeled facility emissions per work unit:
+            # IT energy × PUE × grid carbon intensity.
             chosen_hour = min(
-                candidates, key=lambda hour: (carbon[hour], hour)
+                candidates,
+                key=lambda hour: (
+                    pue[hour] * carbon[hour],
+                    carbon[hour],
+                    hour,
+                ),
             )
 
         capacity[chosen_hour] += job.work
-        energy = job.work * KWH_PER_WORK_UNIT
+        it_energy = job.work * KWH_PER_WORK_UNIT
+        energy = it_energy * float(pue[chosen_hour])
         emissions = energy * float(carbon[chosen_hour])
         total_energy += energy
         total_emissions += emissions
@@ -131,6 +163,8 @@ def run_policy(jobs: list[Job], carbon: np.ndarray, policy: str) -> dict:
                 "scheduled_hour": chosen_hour,
                 "status": "completed",
                 "carbon_intensity_kg_per_kwh": float(carbon[chosen_hour]),
+                "pue": float(pue[chosen_hour]),
+                "it_energy_kwh": it_energy,
                 "energy_kwh": energy,
                 "emissions_kg_co2": emissions,
             }
@@ -152,9 +186,11 @@ def main() -> None:
     OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
     jobs = generate_workload()
     carbon = generate_carbon_intensity()
+    pue = generate_pue_profile()
 
-    baseline = run_policy(jobs, carbon, "baseline")
-    carbon_aware = run_policy(jobs, carbon, "carbon_aware")
+    baseline = run_policy(jobs, carbon, "baseline", pue)
+    carbon_aware = run_policy(jobs, carbon, "carbon_aware", pue)
+    deadline_carbon = run_policy(jobs, carbon, "deadline_carbon", pue)
 
     baseline_emissions = baseline["emissions_kg_co2"]
     aware_emissions = carbon_aware["emissions_kg_co2"]
@@ -165,7 +201,7 @@ def main() -> None:
     )
 
     summary_rows = []
-    for result in (baseline, carbon_aware):
+    for result in (baseline, carbon_aware, deadline_carbon):
         summary_rows.append(
             {
                 key: value
@@ -193,8 +229,8 @@ def main() -> None:
     print(f"\nResults saved in: {OUTPUT_DIR}")
     print("  - experiment_summary.csv")
     print("  - job_schedules.csv")
-    print("\nLimitations: synthetic workload, synthetic carbon intensity,")
-    print("and a fixed illustrative energy-per-work-unit assumption.")
+    print("\nLimitations: synthetic workload, carbon intensity and PUE profiles;")
+    print("fixed illustrative IT energy per work unit; no measured facility data.")
 
 
 if __name__ == "__main__":
