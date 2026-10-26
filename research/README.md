@@ -34,6 +34,8 @@ The repeated-seed evaluation runs 30 paired synthetic trials. The sensitivity an
 
 This produces 81 scenario combinations and 10 paired seeds per combination (810 trials total), with all three policies evaluated on each shared trial. The sensitivity script writes `research/results/sensitivity_trials.csv` and `research/results/sensitivity_summary.csv`. These are scenario analyses within the simulator, not confidence intervals or evidence of real-world savings.
 
+The matched-service analysis reruns the same 81-scenario, 10-seed sweep and compares policy emissions only on the intersection of jobs completed by all three policies in each paired trial. It writes `matched_service_trials.csv`, `matched_service_scenario_summary.csv`, and `matched_service_analysis_report.md`. Always report common-work coverage with matched emissions: conditioning on the shared completed-job set can select a subset of the workload and is not proof of equal service across the full workload. The analysis is still synthetic and does not establish real-world savings.
+
 ## Output files
 
 The single-run script writes:
