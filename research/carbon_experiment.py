@@ -169,14 +169,31 @@ def run_policy(
         )
 
     completed = len(jobs) - missed_deadlines
+    total_work_units = sum(job.work for job in jobs)
+    completed_work_units = sum(
+        row["work_units"] for row in schedule if row["status"] == "completed"
+    )
+    missed_work_units = total_work_units - completed_work_units
+
     return {
         "policy": policy,
         "jobs_total": len(jobs),
         "jobs_completed": completed,
         "jobs_missed": missed_deadlines,
         "completion_rate_pct": 100.0 * completed / len(jobs) if jobs else 0.0,
+        "total_work_units": total_work_units,
+        "completed_work_units": completed_work_units,
+        "missed_work_units": missed_work_units,
+        "work_completion_rate_pct": (
+            100.0 * completed_work_units / total_work_units
+            if total_work_units else 0.0
+        ),
         "energy_kwh": total_energy,
         "emissions_kg_co2": total_emissions,
+        "emissions_kg_co2_per_completed_work_unit": (
+            total_emissions / completed_work_units
+            if completed_work_units else None
+        ),
         "schedule": schedule,
     }
 
