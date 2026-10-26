@@ -11,6 +11,7 @@ import pandas as pd
 
 from carbon_experiment import (
     generate_carbon_intensity,
+    generate_pue_profile,
     generate_workload,
     run_policy,
 )
@@ -36,8 +37,9 @@ def main() -> None:
     for seed in SEEDS:
         jobs = generate_workload(seed=seed, count=JOB_COUNT)
         carbon = generate_carbon_intensity(seed=seed + 1)
+        pue = generate_pue_profile(seed=seed + 2)
         results = {
-            policy: run_policy(jobs, carbon, policy)
+            policy: run_policy(jobs, carbon, policy, pue)
             for policy in POLICY_NAMES
         }
         baseline = results["baseline"]
