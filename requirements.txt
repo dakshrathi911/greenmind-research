@@ -1,0 +1,10 @@
+# GreenMind AI - Python dependencies
+# Runtime + data/ML dependencies required by the current backend,
+# preprocessing pipeline, forecasting model, and optimization engine.
+
+fastapi==0.141.1
+uvicorn==0.52.1
+pandas
+numpy==2.4.4
+scikit-learn==1.9.0
+joblib
