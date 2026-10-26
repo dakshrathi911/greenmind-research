@@ -60,8 +60,15 @@ def main() -> None:
                     "jobs_completed": result["jobs_completed"],
                     "jobs_missed": result["jobs_missed"],
                     "completion_rate_pct": result["completion_rate_pct"],
+                    "total_work_units": result["total_work_units"],
+                    "completed_work_units": result["completed_work_units"],
+                    "missed_work_units": result["missed_work_units"],
+                    "work_completion_rate_pct": result["work_completion_rate_pct"],
                     "energy_kwh": result["energy_kwh"],
                     "emissions_kg_co2": result["emissions_kg_co2"],
+                    "emissions_kg_co2_per_completed_work_unit": result[
+                        "emissions_kg_co2_per_completed_work_unit"
+                    ],
                 }
             )
 
@@ -69,6 +76,22 @@ def main() -> None:
             {
                 "seed": seed,
                 "jobs_total": JOB_COUNT,
+                "total_work_units": baseline["total_work_units"],
+                "baseline_completed_work_units": baseline["completed_work_units"],
+                "carbon_aware_completed_work_units": aware["completed_work_units"],
+                "deadline_carbon_completed_work_units": deadline["completed_work_units"],
+                "baseline_work_completion_rate_pct": baseline["work_completion_rate_pct"],
+                "carbon_aware_work_completion_rate_pct": aware["work_completion_rate_pct"],
+                "deadline_carbon_work_completion_rate_pct": deadline["work_completion_rate_pct"],
+                "baseline_emissions_per_completed_work_unit": baseline[
+                    "emissions_kg_co2_per_completed_work_unit"
+                ],
+                "carbon_aware_emissions_per_completed_work_unit": aware[
+                    "emissions_kg_co2_per_completed_work_unit"
+                ],
+                "deadline_carbon_emissions_per_completed_work_unit": deadline[
+                    "emissions_kg_co2_per_completed_work_unit"
+                ],
                 "baseline_jobs_missed": baseline["jobs_missed"],
                 "carbon_aware_jobs_missed": aware["jobs_missed"],
                 "deadline_carbon_jobs_missed": deadline["jobs_missed"],
