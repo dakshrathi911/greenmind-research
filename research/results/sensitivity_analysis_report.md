@@ -17,13 +17,15 @@ These are unweighted averages of scenario-level means, not a pooled estimate acr
 
 ## 3. Job completion and missed jobs
 
-| policy          |   scenario_trial_rows |   total_jobs_across_trials |   jobs_missed |   jobs_completed_estimate |   completion_rate_pct_from_missed_jobs |   mean_reported_completion_rate_pct |
-|:----------------|----------------------:|---------------------------:|--------------:|--------------------------:|---------------------------------------:|------------------------------------:|
-| Baseline        |                   810 |                     194400 |            18 |                    194382 |                                 99.991 |                              99.993 |
-| Carbon-aware    |                   810 |                     194400 |           519 |                    193881 |                                 99.733 |                              99.772 |
-| Deadline-carbon |                   810 |                     194400 |           158 |                    194242 |                                 99.919 |                              99.932 |
+| policy          |   scenario_trial_rows |   total_jobs_across_trials |   jobs_missed |   jobs_completed_estimate |   completion_rate_pct_from_missed_jobs |   mean_reported_completion_rate_pct |   total_work_units_across_trials |   completed_work_units |   missed_work_units |   work_completion_rate_pct |   mean_reported_work_completion_rate_pct |   mean_emissions_per_completed_work_unit |
+|:----------------|----------------------:|---------------------------:|--------------:|--------------------------:|---------------------------------------:|------------------------------------:|---------------------------------:|-----------------------:|--------------------:|---------------------------:|-----------------------------------------:|-----------------------------------------:|
+| Baseline        |                   810 |                     194400 |            18 |                    194382 |                                 99.991 |                              99.993 |                           494775 |                 494703 |                  72 |                     99.985 |                                   99.989 |                                    0.438 |
+| Carbon-aware    |                   810 |                     194400 |           519 |                    193881 |                                 99.733 |                              99.772 |                           494775 |                 493114 |                1661 |                     99.664 |                                   99.715 |                                    0.371 |
+| Deadline-carbon |                   810 |                     194400 |           158 |                    194242 |                                 99.919 |                              99.932 |                           494775 |                 494235 |                 540 |                     99.891 |                                   99.91  |                                    0.37  |
 
 The total job counts aggregate jobs across scenario-trial rows; they do not represent unique jobs.
+The table also reports completed and missed work units, work-completion rates, and mean emissions per completed work unit. Aggregate work-unit totals are summed across scenario-trial rows, while reported mean rates and emissions intensities are averages across those rows.
+Emissions per completed work unit is a descriptive efficiency metric; it does not by itself establish a matched-service comparison because the policies may complete different amounts or mixes of work.
 
 ## 4. Paired comparison and multiple testing
 
@@ -59,7 +61,7 @@ The six comparisons that survive the correction are listed below. A positive dif
 
 ## 6. Interpretation
 
-The simulation suggests that both carbon-aware policies can reduce modeled emissions relative to the baseline. Average reductions alone do not capture operational reliability: the deadline-carbon policy missed fewer jobs overall than the carbon-aware policy in this run, but it did not consistently achieve greater emissions reductions.
+The simulation suggests that both carbon-aware policies can reduce modeled emissions relative to the baseline. Average reductions alone do not capture operational reliability: the deadline-carbon policy missed fewer jobs overall than the carbon-aware policy in this run, but it did not consistently achieve greater emissions reductions. Because missed jobs contribute no scheduled energy or emissions in this simulator, a lower total-emissions value can partly reflect less completed work. Interpret total emissions together with completed work units, work-completion rates, and emissions per completed work unit.
 
 Six of 81 scenario-specific paired tests remained significant after Benjamini–Hochberg false discovery rate correction at 0.05. These results are scenario-specific and do not establish universal superiority. Confidence intervals and p-values are conditional on the simulation design and its assumptions.
 
