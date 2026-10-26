@@ -100,6 +100,39 @@ class SchedulingPolicyTests(unittest.TestCase):
         self.assertAlmostEqual(result["energy_kwh"], expected_energy)
         self.assertAlmostEqual(result["emissions_kg_co2"], expected_emissions)
 
+    def test_work_completion_metrics_account_for_missed_jobs(self):
+        jobs = [
+            Job(job_id=1, arrival=0, deadline=0, work=2),
+            Job(job_id=2, arrival=0, deadline=0, work=5),
+        ]
+        result = run_policy(
+            jobs, self.carbon, "baseline", hourly_capacity=3
+        )
+
+        self.assertEqual(result["total_work_units"], 7)
+        self.assertEqual(result["completed_work_units"], 2)
+        self.assertEqual(result["missed_work_units"], 5)
+        self.assertAlmostEqual(
+            result["work_completion_rate_pct"], 100.0 * 2 / 7
+        )
+        self.assertAlmostEqual(
+            result["emissions_kg_co2_per_completed_work_unit"],
+            result["emissions_kg_co2"] / 2,
+        )
+
+    def test_all_missed_jobs_do_not_report_completed_work_emissions_rate(self):
+        jobs = [Job(job_id=1, arrival=0, deadline=0, work=4)]
+        result = run_policy(
+            jobs, self.carbon, "baseline", hourly_capacity=3
+        )
+
+        self.assertEqual(result["jobs_missed"], 1)
+        self.assertEqual(result["completed_work_units"], 0)
+        self.assertEqual(result["missed_work_units"], 4)
+        self.assertIsNone(
+            result["emissions_kg_co2_per_completed_work_unit"]
+        )
+
     def test_pue_scales_facility_energy_and_emissions(self):
         jobs = [Job(job_id=1, arrival=0, deadline=0, work=2)]
         pue = np.full(HOURS, 1.3)
