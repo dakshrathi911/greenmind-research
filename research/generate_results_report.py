@@ -94,6 +94,17 @@ report.append(
     "The total job counts aggregate jobs across scenario-trial rows; "
     "they do not represent unique jobs."
 )
+report.append(
+    "The table also reports completed and missed work units, work-completion "
+    "rates, and mean emissions per completed work unit. Aggregate work-unit "
+    "totals are summed across scenario-trial rows, while reported mean rates "
+    "and emissions intensities are averages across those rows."
+)
+report.append(
+    "Emissions per completed work unit is a descriptive efficiency metric; "
+    "it does not by itself establish a matched-service comparison because "
+    "the policies may complete different amounts or mixes of work."
+)
 report.append("")
 report.append("## 4. Paired comparison and multiple testing")
 report.append("")
@@ -148,7 +159,11 @@ report.append(
     "modeled emissions relative to the baseline. Average reductions alone "
     "do not capture operational reliability: the deadline-carbon policy "
     "missed fewer jobs overall than the carbon-aware policy in this run, "
-    "but it did not consistently achieve greater emissions reductions."
+    "but it did not consistently achieve greater emissions reductions. "
+    "Because missed jobs contribute no scheduled energy or emissions in "
+    "this simulator, a lower total-emissions value can partly reflect less "
+    "completed work. Interpret total emissions together with completed "
+    "work units, work-completion rates, and emissions per completed work unit."
 )
 report.append("")
 report.append(
