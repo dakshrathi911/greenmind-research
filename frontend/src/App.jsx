@@ -72,6 +72,8 @@ function App() {
   const [researchData, setResearchData] = useState(null);
   const [researchLoading, setResearchLoading] = useState(false);
   const [researchError, setResearchError] = useState("");
+  const [advancedAnalytics, setAdvancedAnalytics] = useState(null);
+  const [advancedAnalyticsError, setAdvancedAnalyticsError] = useState("");
 
   async function loadResearchData() {
     try {
@@ -91,6 +93,29 @@ function App() {
 
   useEffect(() => {
     loadResearchData();
+  }, []);
+
+  async function loadAdvancedAnalytics() {
+    try {
+      const responses = await Promise.all([
+        fetch("http://127.0.0.1:8000/api/analytics/overview?days=7"),
+        fetch("http://127.0.0.1:8000/api/analytics/load-shift"),
+        fetch("http://127.0.0.1:8000/api/analytics/model"),
+      ]);
+      for (const response of responses) {
+        if (!response.ok) throw new Error(`Analytics endpoint returned ${response.status}`);
+      }
+      const [overview, scenario, modelDiagnostics] = await Promise.all(responses.map((response) => response.json()));
+      setAdvancedAnalytics({ overview, scenario, model: modelDiagnostics });
+      setAdvancedAnalyticsError("");
+    } catch (err) {
+      console.error("Advanced analytics error:", err);
+      setAdvancedAnalyticsError("Advanced analytics could not be loaded. Check that the backend is updated.");
+    }
+  }
+
+  useEffect(() => {
+    loadAdvancedAnalytics();
   }, []);
 
 
@@ -1843,6 +1868,32 @@ function App() {
 
 
 
+          <section className="panel" style={{ marginTop: "24px" }}>
+            <div className="panel-header">
+              <div><h2>Advanced Analytics</h2><p>Seven-day telemetry summary, model diagnostics and illustrative load shifting</p></div>
+              <button className="refresh-control" onClick={loadAdvancedAnalytics}>Refresh analytics</button>
+            </div>
+            {advancedAnalyticsError && <p role="alert">{advancedAnalyticsError}</p>}
+            {advancedAnalytics ? (
+              <>
+                <div className="research-kpi-grid">
+                  <div className="research-kpi"><span>7-DAY ENERGY</span><strong>{formatNumber(advancedAnalytics.overview.current_period.energy_kwh, 1)} kWh</strong><small>{formatNumber(advancedAnalytics.overview.current_period.observations)} hourly observations</small></div>
+                  <div className="research-kpi"><span>AVERAGE DEMAND</span><strong>{formatNumber(advancedAnalytics.overview.current_period.average_kw, 1)} kW</strong><small>Selected seven-day window</small></div>
+                  <div className="research-kpi"><span>PEAK DEMAND</span><strong>{formatNumber(advancedAnalytics.overview.current_period.peak_kw, 1)} kW</strong><small>Highest observed hourly demand</small></div>
+                  <div className="research-kpi"><span>SIMULATED PEAK REDUCTION</span><strong>{formatNumber(advancedAnalytics.scenario.peak_reduction_pct, 2)}%</strong><small>What-if result, not measured savings</small></div>
+                </div>
+                <div className="research-panel">
+                  <div className="panel-header"><div><h3>Random Forest diagnostics</h3><p>Retrospective evaluation on available telemetry, not a held-out test set</p></div></div>
+                  <p>Model: {advancedAnalytics.model.model_type} · Trees: {formatNumber(advancedAnalytics.model.tree_count)} · Samples: {formatNumber(advancedAnalytics.model.evaluation.samples)}</p>
+                  <p>MAE: {formatNumber(advancedAnalytics.model.evaluation.mae_kw, 3)} kW · RMSE: {formatNumber(advancedAnalytics.model.evaluation.rmse_kw, 3)} kW · R²: {formatNumber(advancedAnalytics.model.evaluation.r2, 3)}</p>
+                  <div className="research-table-wrap"><table className="research-table"><thead><tr><th>Feature</th><th>Importance</th></tr></thead><tbody>
+                    {advancedAnalytics.model.feature_importance.slice(0, 6).map((item) => <tr key={item.feature}><td>{item.feature}</td><td>{formatNumber(item.importance, 4)}</td></tr>)}
+                  </tbody></table></div>
+                </div>
+                <p className="research-explainer">{advancedAnalytics.scenario.limitations.join(" ")}</p>
+              </>
+            ) : !advancedAnalyticsError ? <p>Loading advanced analytics…</p> : null}
+          </section>
           </>
         ) : (
           <section className="research-view">
