@@ -66,6 +66,35 @@ class EnergyStreamSimulatorTests(unittest.TestCase):
         self.assertEqual(reading["energy"], 1168.0)
         self.assertEqual(snapshot["history_length"], 169)
 
+    def test_quality_report_confirms_contiguous_hourly_dataset(self):
+        report = self.simulator.quality_report()
+
+        self.assertTrue(report["is_hourly_contiguous"])
+        self.assertEqual(report["total_observations"], 172)
+        self.assertEqual(report["missing_hour_slots"], 0)
+        self.assertEqual(report["irregular_intervals"], 0)
+        self.assertEqual(report["source"], "UCI dataset replay")
+
+    def test_quality_report_detects_missing_hour(self):
+        gap_path = Path(self.temp_dir.name) / "gap.csv"
+        timestamps = list(
+            pd.date_range("2026-01-01 00:00:00", periods=172, freq="h")
+        )
+        del timestamps[50]
+        pd.DataFrame(
+            {
+                "timestamp": timestamps,
+                "total_energy": [float(1000 + index) for index in range(len(timestamps))],
+            }
+        ).to_csv(gap_path, index=False)
+
+        simulator_with_gap = EnergyStreamSimulator(gap_path)
+        report = simulator_with_gap.quality_report()
+
+        self.assertFalse(report["is_hourly_contiguous"])
+        self.assertEqual(report["missing_hour_slots"], 1)
+        self.assertEqual(report["irregular_intervals"], 1)
+
     def test_simulator_rejects_dataset_with_insufficient_history(self):
         short_path = Path(self.temp_dir.name) / "short.csv"
         pd.DataFrame(
