@@ -95,6 +95,28 @@ class EnergyStreamSimulator:
             self._publish_history()
             return self._serialize(self.data.iloc[self.index])
 
+    def quality_report(self):
+        """Summarize timestamp continuity and coverage of the replay dataset."""
+        timestamps = self.data["timestamp"]
+        start = timestamps.iloc[0]
+        end = timestamps.iloc[-1]
+        expected_hours = int((end - start).total_seconds() // 3600) + 1
+        intervals = timestamps.diff().dropna()
+        irregular_intervals = int((intervals != pd.Timedelta(hours=1)).sum())
+
+        return {
+            "source": self.SOURCE,
+            "mode": self.MODE,
+            "total_observations": int(len(self.data)),
+            "start_timestamp": start.isoformat(),
+            "end_timestamp": end.isoformat(),
+            "expected_hourly_observations": expected_hours,
+            "missing_hour_slots": max(0, expected_hours - int(len(self.data))),
+            "irregular_intervals": irregular_intervals,
+            "is_hourly_contiguous": irregular_intervals == 0,
+            "current_stream_position": int(self.index),
+        }
+
     def active_history(self):
         """Return all observations available to the AI up to the live point."""
         with self.lock:
@@ -158,6 +180,12 @@ def live_history(limit: int = Query(default=168, ge=1, le=1000)):
         "count": len(readings),
         "readings": readings,
     }
+
+
+@router.get("/quality")
+def live_data_quality():
+    """Report hourly continuity and coverage for the replay dataset."""
+    return simulator.quality_report()
 
 
 @router.get("/export")
