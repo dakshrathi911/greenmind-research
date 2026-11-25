@@ -6,6 +6,7 @@ real meters/IoT adapters later) and the intelligence layer.
 
 from __future__ import annotations
 
+import math
 from threading import RLock
 from typing import Any
 
@@ -45,6 +46,8 @@ class TelemetryStore:
         )
         data = data.dropna(subset=HISTORY_COLUMNS)
 
+        if not data["total_energy"].map(math.isfinite).all():
+            raise ValueError("Energy readings must be finite numbers.")
         if (data["total_energy"] < 0).any():
             raise ValueError("Energy readings cannot be negative.")
 
@@ -92,7 +95,7 @@ class TelemetryStore:
 
         if pd.isna(parsed_timestamp):
             raise ValueError("A valid telemetry timestamp is required.")
-        if not pd.notna(value) or value < 0:
+        if not math.isfinite(value) or value < 0:
             raise ValueError("Energy reading must be a finite, non-negative number.")
         if not source or not mode:
             raise ValueError("Telemetry source and mode are required.")
