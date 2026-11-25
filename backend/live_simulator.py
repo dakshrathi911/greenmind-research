@@ -13,7 +13,7 @@ from pathlib import Path
 from threading import Lock
 
 import pandas as pd
-from fastapi import APIRouter
+from fastapi import APIRouter, Query
 
 from backend.telemetry import telemetry_store
 
@@ -136,6 +136,25 @@ def live_status():
         "streaming": simulator.running,
         "reading": reading,
         "telemetry": telemetry,
+    }
+
+
+@router.get("/history")
+def live_history(limit: int = Query(default=168, ge=1, le=1000)):
+    """Return recent telemetry observations with explicit source metadata."""
+    history = telemetry_store.get_history().tail(limit)
+    readings = [
+        {
+            "timestamp": row["timestamp"].isoformat(),
+            "energy": round(float(row["total_energy"]), 2),
+            "unit": "kW",
+        }
+        for _, row in history.iterrows()
+    ]
+    return {
+        "telemetry": telemetry_store.snapshot(),
+        "count": len(readings),
+        "readings": readings,
     }
 
 
