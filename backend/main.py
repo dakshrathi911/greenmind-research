@@ -17,6 +17,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from models.optimization_engine import optimize
 from backend.telemetry import telemetry_store
+from backend.carbon_intensity import carbon_intensity_provider
 
 from backend.live_simulator import router as live_router, simulator
 
@@ -491,33 +492,34 @@ def calculate_efficiency():
 def calculate_carbon():
 
     if get_energy_history() is None:
-        return 0
+        return {
+            "value": 0,
+            "intensity": carbon_intensity_provider.get_intensity(),
+        }
 
     current_power_kw = float(
         get_energy_history().iloc[-1]["total_energy"]
     )
 
-    # The dataset contains hourly power values in kW.
-    # For a one-hour interval:
-    #
-    # kW × 1 hour = kWh
-    #
-    # This is an estimated grid emission factor.
-    # It should eventually be replaced with a configurable,
-    # location/time-specific carbon intensity.
-    emission_factor_kg_per_kwh = 0.676
-
+    # The replay contains hourly power values. For a one-hour interval,
+    # kW × 1 hour = kWh. Carbon intensity is supplied in gCO2e/kWh.
+    intensity = carbon_intensity_provider.get_intensity()
+    emission_factor_kg_per_kwh = (
+        float(intensity["carbon_intensity_gco2_per_kwh"]) / 1000
+    )
     energy_kwh = current_power_kw * 1.0
+    carbon_kg = energy_kwh * emission_factor_kg_per_kwh
 
-    carbon_kg = (
-        energy_kwh
-        * emission_factor_kg_per_kwh
-    )
+    return {
+        "value": round(carbon_kg, 2),
+        "intensity": intensity,
+    }
 
-    return round(
-        carbon_kg,
-        2
-    )
+@app.get("/api/carbon-intensity")
+def carbon_intensity_endpoint():
+    """Expose the active carbon-intensity source and fallback status."""
+    return carbon_intensity_provider.get_intensity()
+
 
 # ============================================================
 # ENERGY HISTORY
@@ -1732,16 +1734,16 @@ def dashboard():
             "carbon_footprint": {
 
                 "value":
-                    round(
-                        carbon,
-                        2
-                    ),
+                    carbon["value"],
 
                 "unit":
                     "kg",
 
                 "change":
                     0,
+
+                "intensity":
+                    carbon["intensity"],
             },
 
             "efficiency_score": {
