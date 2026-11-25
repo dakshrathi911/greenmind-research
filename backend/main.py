@@ -16,8 +16,9 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from models.optimization_engine import optimize
+from backend.telemetry import telemetry_store
 
-from backend.live_simulator import router as live_router
+from backend.live_simulator import router as live_router, simulator
 
 
 warnings.filterwarnings("ignore")
@@ -95,7 +96,6 @@ FEATURES = [
 # ============================================================
 
 model = None
-energy_df = None
 
 
 # ============================================================
@@ -120,48 +120,17 @@ except Exception as e:
 
 
 # ============================================================
-# LOAD ENERGY DATASET
+# TELEMETRY ACCESS
 # ============================================================
 
-try:
+def get_energy_history():
+    """Return a snapshot of the active telemetry history.
 
-    energy_df = pd.read_csv(
-        DATA_PATH
-    )
-
-    energy_df["timestamp"] = pd.to_datetime(
-        energy_df["timestamp"]
-    )
-
-    energy_df["total_energy"] = pd.to_numeric(
-        energy_df["total_energy"],
-        errors="coerce"
-    )
-
-    energy_df = (
-        energy_df
-        .dropna(
-            subset=[
-                "timestamp",
-                "total_energy"
-            ]
-        )
-        .sort_values("timestamp")
-        .reset_index(drop=True)
-    )
-
-    print(
-        "Energy dataset loaded successfully: "
-        f"{len(energy_df)} hourly observations."
-    )
-
-except Exception as e:
-
-    energy_df = None
-
-    print(
-        f"WARNING: Dataset could not be loaded: {e}"
-    )
+    The telemetry store is the single source of truth for all
+    forecasting and energy-intelligence calculations.
+    """
+    history = telemetry_store.get_history()
+    return history if not history.empty else None
 
 
 # ============================================================
@@ -170,6 +139,11 @@ except Exception as e:
 
 @app.on_event("startup")
 def startup_event():
+
+    # Initialize the shared telemetry store from the simulator before
+    # any dashboard or intelligence endpoint is requested.
+    simulator.current()
+    active_history = get_energy_history()
 
     print()
     print("=" * 60)
@@ -183,7 +157,7 @@ def startup_event():
 
     print(
         "Dataset:",
-        "Loaded" if energy_df is not None else "Not Loaded"
+        "Loaded" if active_history is not None else "Not Loaded"
     )
 
     print(
@@ -207,7 +181,7 @@ def root():
         "description": "AI-powered energy intelligence platform",
         "status": "operational",
         "model_loaded": model is not None,
-        "dataset_loaded": energy_df is not None,
+        "dataset_loaded": get_energy_history() is not None",
     }
 
 
@@ -221,7 +195,7 @@ def health():
     return {
         "status": "ok",
         "model_loaded": model is not None,
-        "dataset_loaded": energy_df is not None,
+        "dataset_loaded": get_energy_history() is not None,
         "timestamp": datetime.now().isoformat(),
     }
 
@@ -308,14 +282,14 @@ def generate_prediction():
             "Forecasting model is not loaded."
         )
 
-    if energy_df is None:
+    if get_energy_history() is None:
 
         raise RuntimeError(
             "Energy dataset is not loaded."
         )
 
     feature_df = build_prediction_features(
-        energy_df
+        get_energy_history()
     )
 
     latest = feature_df.iloc[-1]
@@ -334,7 +308,7 @@ def generate_prediction():
     )
 
     current_energy = float(
-        energy_df.iloc[-1]["total_energy"]
+        get_energy_history().iloc[-1]["total_energy"]
     )
 
     if current_energy != 0:
@@ -446,7 +420,7 @@ def generate_prediction():
 
         "based_on":
             str(
-                energy_df.iloc[-1][
+                get_energy_history().iloc[-1][
                     "timestamp"
                 ]
             ),
@@ -459,15 +433,15 @@ def generate_prediction():
 
 def calculate_efficiency():
 
-    if energy_df is None:
+    if get_energy_history() is None:
         return 0
 
     current = float(
-        energy_df.iloc[-1]["total_energy"]
+        get_energy_history().iloc[-1]["total_energy"]
     )
 
     recent = (
-        energy_df["total_energy"]
+        get_energy_history()["total_energy"]
         .tail(168)
         .iloc[:-1]
     )
@@ -516,11 +490,11 @@ def calculate_efficiency():
 
 def calculate_carbon():
 
-    if energy_df is None:
+    if get_energy_history() is None:
         return 0
 
     current_power_kw = float(
-        energy_df.iloc[-1]["total_energy"]
+        get_energy_history().iloc[-1]["total_energy"]
     )
 
     # The dataset contains hourly power values in kW.
@@ -551,11 +525,11 @@ def calculate_carbon():
 
 def generate_energy_history():
 
-    if energy_df is None:
+    if get_energy_history() is None:
         return []
 
     history = (
-        energy_df
+        get_energy_history()
         .tail(24)
         .copy()
     )
@@ -594,7 +568,7 @@ def generate_energy_history():
 
 def generate_anomaly():
 
-    if energy_df is None:
+    if get_energy_history() is None:
 
         return {
             "detected": False,
@@ -614,7 +588,7 @@ def generate_anomaly():
             "recommendation": "No recommendation available.",
         }
 
-    data = energy_df.copy()
+    data = get_energy_history().copy()
 
     data["hour"] = (
         data["timestamp"].dt.hour
@@ -889,11 +863,11 @@ def generate_recommendations(
 
     current_energy = (
         float(
-            energy_df.iloc[-1][
+            get_energy_history().iloc[-1][
                 "total_energy"
             ]
         )
-        if energy_df is not None
+        if get_energy_history() is not None
         else 0
     )
 
@@ -1021,10 +995,10 @@ def generate_decision(
     current_energy = float(
         prediction.get(
             "current_energy",
-            energy_df.iloc[-1][
+            get_energy_history().iloc[-1][
                 "total_energy"
             ]
-            if energy_df is not None
+            if get_energy_history() is not None
             else 0
         )
     )
@@ -1686,7 +1660,7 @@ def research_summary_endpoint():
 @app.get("/api/dashboard")
 def dashboard():
 
-    if energy_df is None:
+    if get_energy_history() is None:
 
         return {
             "error":
@@ -1700,7 +1674,7 @@ def dashboard():
         )
 
         current_energy = float(
-            energy_df.iloc[-1][
+            get_energy_history().iloc[-1][
                 "total_energy"
             ]
         )
@@ -1734,7 +1708,7 @@ def dashboard():
 
         historical = (
             generate_historical_intelligence(
-                energy_df
+                get_energy_history()
             )
         )
 
@@ -1940,7 +1914,7 @@ def decision_endpoint():
 @app.get("/api/historical")
 def historical_endpoint():
 
-    if energy_df is None:
+    if get_energy_history() is None:
 
         return {
             "error":
@@ -1951,7 +1925,7 @@ def historical_endpoint():
 
         historical = (
             generate_historical_intelligence(
-                energy_df
+                get_energy_history()
             )
         )
 
@@ -2019,12 +1993,12 @@ def info():
             model is not None,
 
         "dataset_loaded":
-            energy_df is not None,
+            get_energy_history() is not None,
 
         "dataset_rows":
             (
-                len(energy_df)
-                if energy_df is not None
+                len(get_energy_history())
+                if get_energy_history() is not None
                 else 0
             ),
 
