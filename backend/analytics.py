@@ -5,7 +5,6 @@ All scenario outputs are analytical simulations, not measured facility savings.
 from __future__ import annotations
 
 from datetime import timedelta
-from typing import Literal
 
 import numpy as np
 import pandas as pd
@@ -140,7 +139,9 @@ def build_load_shift_scenario(data: pd.DataFrame, shift_fraction: float = 0.10) 
 
 
 @router.get("/overview")
-def analytics_overview(days: Literal[7, 30, 90] = Query(7)):
+def analytics_overview(days: int = Query(7, ge=7, le=90)):
+    if days not in (7, 30, 90):
+        raise HTTPException(status_code=422, detail="days must be one of 7, 30, or 90")
     return build_overview(_history(), days)
 
 
