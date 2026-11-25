@@ -3,6 +3,7 @@ import "./App.css";
 
 const API_URL = "http://127.0.0.1:8000/api/dashboard";
 const OPTIMIZATION_API_URL = "http://127.0.0.1:8000/api/optimization";
+const LIVE_API_URL = "http://127.0.0.1:8000/api/live";
 
 function formatNumber(value, decimals = 0) {
   if (
@@ -59,6 +60,9 @@ function getAnomalyIcon(anomaly) {
 
 function App() {
   const [dashboard, setDashboard] = useState(null);
+  const [liveStatus, setLiveStatus] = useState(null);
+  const [streamActionLoading, setStreamActionLoading] = useState(false);
+  const [streamError, setStreamError] = useState("");
   const [optimization, setOptimization] = useState(null);
   const [optimizationLoading, setOptimizationLoading] = useState(false);
   const [loading, setLoading] = useState(true);
@@ -68,6 +72,8 @@ function App() {
   const [researchData, setResearchData] = useState(null);
   const [researchLoading, setResearchLoading] = useState(false);
   const [researchError, setResearchError] = useState("");
+  const [advancedAnalytics, setAdvancedAnalytics] = useState(null);
+  const [advancedAnalyticsError, setAdvancedAnalyticsError] = useState("");
 
   async function loadResearchData() {
     try {
@@ -87,6 +93,29 @@ function App() {
 
   useEffect(() => {
     loadResearchData();
+  }, []);
+
+  async function loadAdvancedAnalytics() {
+    try {
+      const responses = await Promise.all([
+        fetch("http://127.0.0.1:8000/api/analytics/overview?days=7"),
+        fetch("http://127.0.0.1:8000/api/analytics/load-shift"),
+        fetch("http://127.0.0.1:8000/api/analytics/model"),
+      ]);
+      for (const response of responses) {
+        if (!response.ok) throw new Error(`Analytics endpoint returned ${response.status}`);
+      }
+      const [overview, scenario, modelDiagnostics] = await Promise.all(responses.map((response) => response.json()));
+      setAdvancedAnalytics({ overview, scenario, model: modelDiagnostics });
+      setAdvancedAnalyticsError("");
+    } catch (err) {
+      console.error("Advanced analytics error:", err);
+      setAdvancedAnalyticsError("Advanced analytics could not be loaded. Check that the backend is updated.");
+    }
+  }
+
+  useEffect(() => {
+    loadAdvancedAnalytics();
   }, []);
 
 
@@ -115,6 +144,73 @@ function App() {
     }
   }
 
+  async function loadLiveStatus() {
+    try {
+      const response = await fetch(`${LIVE_API_URL}/status`);
+      if (!response.ok) throw new Error(`Live telemetry returned ${response.status}`);
+      const data = await response.json();
+      setLiveStatus(data);
+      setStreamError("");
+    } catch (err) {
+      console.error("Live telemetry error:", err);
+      setStreamError("Unable to load simulator status.");
+    }
+  }
+
+  async function advanceLiveData() {
+    try {
+      setStreamActionLoading(true);
+      const response = await fetch(`${LIVE_API_URL}/advance`, { method: "POST" });
+      if (!response.ok) throw new Error(`Simulator returned ${response.status}`);
+      const data = await response.json();
+      setLiveStatus(data);
+      setStreamError("");
+      await loadDashboard();
+    } catch (err) {
+      console.error("Advance telemetry error:", err);
+      setStreamError("Unable to advance simulated telemetry.");
+    } finally {
+      setStreamActionLoading(false);
+    }
+  }
+
+  async function exportTelemetryCsv() {
+    try {
+      const response = await fetch(`${LIVE_API_URL}/export?limit=1000`);
+      if (!response.ok) throw new Error(`Telemetry export returned ${response.status}`);
+      const blob = await response.blob();
+      const url = window.URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = "greenmind_telemetry.csv";
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      window.URL.revokeObjectURL(url);
+      setStreamError("");
+    } catch (err) {
+      console.error("Telemetry export error:", err);
+      setStreamError("Unable to export telemetry history.");
+    }
+  }
+
+  async function resetLiveData() {
+    try {
+      setStreamActionLoading(true);
+      const response = await fetch(`${LIVE_API_URL}/reset`, { method: "POST" });
+      if (!response.ok) throw new Error(`Simulator returned ${response.status}`);
+      const data = await response.json();
+      setLiveStatus(data);
+      setStreamError("");
+      await loadDashboard();
+    } catch (err) {
+      console.error("Reset telemetry error:", err);
+      setStreamError("Unable to reset simulated telemetry.");
+    } finally {
+      setStreamActionLoading(false);
+    }
+  }
+
   async function loadOptimization() {
     try {
       setOptimizationLoading(true);
@@ -140,10 +236,12 @@ function App() {
   useEffect(() => {
     loadDashboard();
     loadOptimization();
+    loadLiveStatus();
 
     const interval = setInterval(() => {
       loadDashboard();
       loadOptimization();
+      loadLiveStatus();
     }, 30000);
 
     return () => clearInterval(interval);
@@ -274,10 +372,42 @@ function App() {
             <span className="status-dot" />
             AI SYSTEM ONLINE
           </div>
-          <button className="refresh-control" onClick={refreshDashboard} title="Refresh dashboard data" aria-label="Refresh dashboard data">
-            <span aria-hidden="true">↻</span>
-            Refresh
-          </button>
+          <div className="live-stream-controls">
+            <div className="live-stream-meta" aria-live="polite">
+              <strong>{liveStatus?.reading?.mode === "simulation" ? "SIMULATED STREAM" : "STREAM STATUS"}</strong>
+              <small>
+                {liveStatus?.reading?.timestamp || streamError || "Connecting to telemetry..."}
+              </small>
+            </div>
+            <button
+              className="refresh-control"
+              onClick={advanceLiveData}
+              disabled={streamActionLoading || !liveStatus}
+              title="Advance simulator by one hourly reading"
+            >
+              {streamActionLoading ? "Working..." : "Next hour"}
+            </button>
+            <button
+              className="refresh-control"
+              onClick={resetLiveData}
+              disabled={streamActionLoading || !liveStatus}
+              title="Reset simulator to its first reading"
+            >
+              Reset
+            </button>
+            <button
+              className="refresh-control"
+              onClick={exportTelemetryCsv}
+              disabled={!liveStatus}
+              title="Download up to 1,000 telemetry readings as CSV"
+            >
+              Export CSV
+            </button>
+            <button className="refresh-control" onClick={refreshDashboard} title="Refresh dashboard data" aria-label="Refresh dashboard data">
+              <span aria-hidden="true">↻</span>
+              Refresh
+            </button>
+          </div>
         </div>
       </header>
 
@@ -340,7 +470,11 @@ function App() {
             </div>
 
             <div className="metric-description">
-              Estimated emissions for one hour at current demand
+              {dashboard?.carbon_footprint?.intensity?.source_label || "Carbon intensity source unavailable"}
+              {dashboard?.carbon_footprint?.intensity?.carbon_intensity_gco2_per_kwh != null
+                ? ` · ${formatNumber(dashboard.carbon_footprint.intensity.carbon_intensity_gco2_per_kwh, 1)} gCO₂e/kWh`
+                : ""}
+              {dashboard?.carbon_footprint?.intensity?.is_fallback ? " · fallback estimate" : " · one-hour estimate"}
             </div>
           </div>
 
@@ -1734,6 +1868,32 @@ function App() {
 
 
 
+          <section className="panel" style={{ marginTop: "24px" }}>
+            <div className="panel-header">
+              <div><h2>Advanced Analytics</h2><p>Seven-day telemetry summary, model diagnostics and illustrative load shifting</p></div>
+              <button className="refresh-control" onClick={loadAdvancedAnalytics}>Refresh analytics</button>
+            </div>
+            {advancedAnalyticsError && <p role="alert">{advancedAnalyticsError}</p>}
+            {advancedAnalytics ? (
+              <>
+                <div className="research-kpi-grid">
+                  <div className="research-kpi"><span>7-DAY ENERGY</span><strong>{formatNumber(advancedAnalytics.overview.current_period.energy_kwh, 1)} kWh</strong><small>{formatNumber(advancedAnalytics.overview.current_period.observations)} hourly observations</small></div>
+                  <div className="research-kpi"><span>AVERAGE DEMAND</span><strong>{formatNumber(advancedAnalytics.overview.current_period.average_kw, 1)} kW</strong><small>Selected seven-day window</small></div>
+                  <div className="research-kpi"><span>PEAK DEMAND</span><strong>{formatNumber(advancedAnalytics.overview.current_period.peak_kw, 1)} kW</strong><small>Highest observed hourly demand</small></div>
+                  <div className="research-kpi"><span>SIMULATED PEAK REDUCTION</span><strong>{formatNumber(advancedAnalytics.scenario.peak_reduction_pct, 2)}%</strong><small>What-if result, not measured savings</small></div>
+                </div>
+                <div className="research-panel">
+                  <div className="panel-header"><div><h3>Random Forest diagnostics</h3><p>Retrospective evaluation on available telemetry, not a held-out test set</p></div></div>
+                  <p>Model: {advancedAnalytics.model.model_type} · Trees: {formatNumber(advancedAnalytics.model.tree_count)} · Samples: {formatNumber(advancedAnalytics.model.evaluation.samples)}</p>
+                  <p>MAE: {formatNumber(advancedAnalytics.model.evaluation.mae_kw, 3)} kW · RMSE: {formatNumber(advancedAnalytics.model.evaluation.rmse_kw, 3)} kW · R²: {formatNumber(advancedAnalytics.model.evaluation.r2, 3)}</p>
+                  <div className="research-table-wrap"><table className="research-table"><thead><tr><th>Feature</th><th>Importance</th></tr></thead><tbody>
+                    {advancedAnalytics.model.feature_importance.slice(0, 6).map((item) => <tr key={item.feature}><td>{item.feature}</td><td>{formatNumber(item.importance, 4)}</td></tr>)}
+                  </tbody></table></div>
+                </div>
+                <p className="research-explainer">{advancedAnalytics.scenario.limitations.join(" ")}</p>
+              </>
+            ) : !advancedAnalyticsError ? <p>Loading advanced analytics…</p> : null}
+          </section>
           </>
         ) : (
           <section className="research-view">

@@ -5,16 +5,19 @@
 # Replays the processed UCI electricity dataset as a streaming
 # telemetry source for development and demonstration.
 #
-# This module does NOT claim that the UCI dataset is live.
-# It provides a replaceable interface that can later be connected
-# to smart meters, IoT devices, or another real-time data source.
+# The simulator publishes through the shared telemetry store.
+# The UCI replay remains simulated data, not live sensor telemetry.
 # ============================================================
 
+from io import StringIO
 from pathlib import Path
 from threading import Lock
 
 import pandas as pd
-from fastapi import APIRouter
+from fastapi import APIRouter, Query
+from fastapi.responses import Response
+
+from backend.telemetry import telemetry_store
 
 
 BASE_DIR = Path(__file__).resolve().parent.parent
@@ -24,7 +27,10 @@ router = APIRouter(prefix="/api/live", tags=["Live Telemetry"])
 
 
 class EnergyStreamSimulator:
-    """Replay hourly dataset rows as if they were incoming telemetry."""
+    """Replay hourly dataset rows through GreenMind's telemetry interface."""
+
+    SOURCE = "UCI dataset replay"
+    MODE = "simulation"
 
     def __init__(self, data_path: Path):
         self.data_path = data_path
@@ -41,23 +47,36 @@ class EnergyStreamSimulator:
         self.running = True
 
     def _load_data(self):
+        if not self.data_path.exists():
+            raise FileNotFoundError(
+                f"Telemetry dataset not found: {self.data_path}. "
+                "Run the data preparation pipeline first."
+            )
+
         data = pd.read_csv(self.data_path)
-        data["timestamp"] = pd.to_datetime(data["timestamp"])
+        data["timestamp"] = pd.to_datetime(
+            data["timestamp"], errors="coerce"
+        )
         data["total_energy"] = pd.to_numeric(
             data["total_energy"], errors="coerce"
         )
 
-        return (
+        data = (
             data.dropna(subset=["timestamp", "total_energy"])
             .sort_values("timestamp")
+            .drop_duplicates(subset=["timestamp"], keep="last")
             .reset_index(drop=True)
         )
 
+        if (data["total_energy"] < 0).any():
+            raise ValueError("Dataset contains negative energy readings.")
+
+        return data
+
     def current(self):
         with self.lock:
-            row = self.data.iloc[self.index]
-            self._sync_backend_state()
-            return self._serialize(row)
+            self._publish_history()
+            return self._serialize(self.data.iloc[self.index])
 
     def advance(self):
         with self.lock:
@@ -67,39 +86,62 @@ class EnergyStreamSimulator:
             else:
                 self.index += 1
 
-            self._sync_backend_state()
+            self._publish_history()
             return self._serialize(self.data.iloc[self.index])
 
     def reset(self):
         with self.lock:
             self.index = 168
-            self._sync_backend_state()
+            self._publish_history()
             return self._serialize(self.data.iloc[self.index])
+
+    def quality_report(self):
+        """Summarize timestamp continuity and coverage of the replay dataset."""
+        timestamps = self.data["timestamp"]
+        start = timestamps.iloc[0]
+        end = timestamps.iloc[-1]
+        expected_hours = int((end - start).total_seconds() // 3600) + 1
+        intervals = timestamps.diff().dropna()
+        irregular_intervals = int((intervals != pd.Timedelta(hours=1)).sum())
+
+        return {
+            "source": self.SOURCE,
+            "mode": self.MODE,
+            "total_observations": int(len(self.data)),
+            "start_timestamp": start.isoformat(),
+            "end_timestamp": end.isoformat(),
+            "expected_hourly_observations": expected_hours,
+            "missing_hour_slots": max(0, expected_hours - int(len(self.data))),
+            "irregular_intervals": irregular_intervals,
+            "is_hourly_contiguous": irregular_intervals == 0,
+            "current_stream_position": int(self.index),
+        }
 
     def active_history(self):
         """Return all observations available to the AI up to the live point."""
         with self.lock:
             return self.data.iloc[: self.index + 1].copy()
 
-    def _sync_backend_state(self):
-        """Make the existing backend AI use the current simulated stream point.
+    def _publish_history(self):
+        """Publish source history to the shared telemetry store.
 
-        The import is intentionally deferred until request time to avoid a
-        circular import while FastAPI loads the live simulator router.
+        All forecasting and dashboard intelligence reads from this store.
         """
-        import sys
+        history = self.data.iloc[: self.index + 1].copy()
 
-        backend_main = sys.modules.get("backend.main")
-        if backend_main is not None:
-            backend_main.energy_df = self.data.iloc[: self.index + 1].copy()
+        telemetry_store.replace_history(
+            history,
+            source=self.SOURCE,
+            mode=self.MODE,
+        )
 
     def _serialize(self, row):
         return {
             "timestamp": str(row["timestamp"]),
             "energy": round(float(row["total_energy"]), 2),
             "unit": "kW",
-            "source": "UCI dataset replay",
-            "mode": "simulation",
+            "source": self.SOURCE,
+            "mode": self.MODE,
             "stream_position": int(self.index),
             "stream_length": int(len(self.data)),
         }
@@ -110,13 +152,59 @@ simulator = EnergyStreamSimulator(DATA_PATH)
 
 @router.get("/status")
 def live_status():
-    """Return the current simulated telemetry reading and sync the AI state."""
+    """Return the current simulated telemetry reading and source metadata."""
     reading = simulator.current()
+    telemetry = telemetry_store.snapshot()
     return {
         "status": "live_simulation",
         "streaming": simulator.running,
         "reading": reading,
+        "telemetry": telemetry,
     }
+
+
+@router.get("/history")
+def live_history(limit: int = Query(default=168, ge=1, le=1000)):
+    """Return recent telemetry observations with explicit source metadata."""
+    history = telemetry_store.get_history().tail(limit)
+    readings = [
+        {
+            "timestamp": row["timestamp"].isoformat(),
+            "energy": round(float(row["total_energy"]), 2),
+            "unit": "kW",
+        }
+        for _, row in history.iterrows()
+    ]
+    return {
+        "telemetry": telemetry_store.snapshot(),
+        "count": len(readings),
+        "readings": readings,
+    }
+
+
+@router.get("/quality")
+def live_data_quality():
+    """Report hourly continuity and coverage for the replay dataset."""
+    return simulator.quality_report()
+
+
+@router.get("/export")
+def export_live_history(limit: int = Query(default=1000, ge=1, le=1000)):
+    """Download recent telemetry as a CSV with source metadata."""
+    history = telemetry_store.get_history().tail(limit).copy()
+    history["source"] = telemetry_store.snapshot()["source"]
+    history["mode"] = telemetry_store.snapshot()["mode"]
+    history = history.rename(columns={"total_energy": "energy_kw"})
+
+    output = StringIO()
+    history.to_csv(output, index=False)
+    return Response(
+        content=output.getvalue(),
+        media_type="text/csv",
+        headers={
+            "Content-Disposition": 'attachment; filename="greenmind_telemetry.csv"'
+        },
+    )
 
 
 @router.post("/advance")
@@ -127,6 +215,7 @@ def advance_live_data():
         "status": "live_simulation",
         "streaming": simulator.running,
         "reading": reading,
+        "telemetry": telemetry_store.snapshot(),
     }
 
 
@@ -138,4 +227,5 @@ def reset_live_data():
         "status": "live_simulation",
         "streaming": simulator.running,
         "reading": reading,
+        "telemetry": telemetry_store.snapshot(),
     }
