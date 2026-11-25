@@ -3,6 +3,7 @@ import "./App.css";
 
 const API_URL = "http://127.0.0.1:8000/api/dashboard";
 const OPTIMIZATION_API_URL = "http://127.0.0.1:8000/api/optimization";
+const LIVE_API_URL = "http://127.0.0.1:8000/api/live";
 
 function formatNumber(value, decimals = 0) {
   if (
@@ -59,6 +60,9 @@ function getAnomalyIcon(anomaly) {
 
 function App() {
   const [dashboard, setDashboard] = useState(null);
+  const [liveStatus, setLiveStatus] = useState(null);
+  const [streamActionLoading, setStreamActionLoading] = useState(false);
+  const [streamError, setStreamError] = useState("");
   const [optimization, setOptimization] = useState(null);
   const [optimizationLoading, setOptimizationLoading] = useState(false);
   const [loading, setLoading] = useState(true);
@@ -115,6 +119,53 @@ function App() {
     }
   }
 
+  async function loadLiveStatus() {
+    try {
+      const response = await fetch(`${LIVE_API_URL}/status`);
+      if (!response.ok) throw new Error(`Live telemetry returned ${response.status}`);
+      const data = await response.json();
+      setLiveStatus(data);
+      setStreamError("");
+    } catch (err) {
+      console.error("Live telemetry error:", err);
+      setStreamError("Unable to load simulator status.");
+    }
+  }
+
+  async function advanceLiveData() {
+    try {
+      setStreamActionLoading(true);
+      const response = await fetch(`${LIVE_API_URL}/advance`, { method: "POST" });
+      if (!response.ok) throw new Error(`Simulator returned ${response.status}`);
+      const data = await response.json();
+      setLiveStatus(data);
+      setStreamError("");
+      await loadDashboard();
+    } catch (err) {
+      console.error("Advance telemetry error:", err);
+      setStreamError("Unable to advance simulated telemetry.");
+    } finally {
+      setStreamActionLoading(false);
+    }
+  }
+
+  async function resetLiveData() {
+    try {
+      setStreamActionLoading(true);
+      const response = await fetch(`${LIVE_API_URL}/reset`, { method: "POST" });
+      if (!response.ok) throw new Error(`Simulator returned ${response.status}`);
+      const data = await response.json();
+      setLiveStatus(data);
+      setStreamError("");
+      await loadDashboard();
+    } catch (err) {
+      console.error("Reset telemetry error:", err);
+      setStreamError("Unable to reset simulated telemetry.");
+    } finally {
+      setStreamActionLoading(false);
+    }
+  }
+
   async function loadOptimization() {
     try {
       setOptimizationLoading(true);
@@ -140,10 +191,12 @@ function App() {
   useEffect(() => {
     loadDashboard();
     loadOptimization();
+    loadLiveStatus();
 
     const interval = setInterval(() => {
       loadDashboard();
       loadOptimization();
+      loadLiveStatus();
     }, 30000);
 
     return () => clearInterval(interval);
@@ -274,10 +327,34 @@ function App() {
             <span className="status-dot" />
             AI SYSTEM ONLINE
           </div>
-          <button className="refresh-control" onClick={refreshDashboard} title="Refresh dashboard data" aria-label="Refresh dashboard data">
-            <span aria-hidden="true">↻</span>
-            Refresh
-          </button>
+          <div className="live-stream-controls">
+            <div className="live-stream-meta" aria-live="polite">
+              <strong>{liveStatus?.reading?.mode === "simulation" ? "SIMULATED STREAM" : "STREAM STATUS"}</strong>
+              <small>
+                {liveStatus?.reading?.timestamp || streamError || "Connecting to telemetry..."}
+              </small>
+            </div>
+            <button
+              className="refresh-control"
+              onClick={advanceLiveData}
+              disabled={streamActionLoading || !liveStatus}
+              title="Advance simulator by one hourly reading"
+            >
+              {streamActionLoading ? "Working..." : "Next hour"}
+            </button>
+            <button
+              className="refresh-control"
+              onClick={resetLiveData}
+              disabled={streamActionLoading || !liveStatus}
+              title="Reset simulator to its first reading"
+            >
+              Reset
+            </button>
+            <button className="refresh-control" onClick={refreshDashboard} title="Refresh dashboard data" aria-label="Refresh dashboard data">
+              <span aria-hidden="true">↻</span>
+              Refresh
+            </button>
+          </div>
         </div>
       </header>
 
