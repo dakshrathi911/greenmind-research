@@ -20,6 +20,7 @@ from backend.telemetry import telemetry_store
 from backend.carbon_intensity import carbon_intensity_provider
 
 from backend.live_simulator import router as live_router, simulator
+from backend.analytics import router as analytics_router
 
 
 warnings.filterwarnings("ignore")
@@ -36,6 +37,7 @@ app = FastAPI(
 )
 
 app.include_router(live_router)
+app.include_router(analytics_router)
 
 
 # ============================================================
