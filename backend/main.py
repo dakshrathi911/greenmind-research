@@ -181,7 +181,7 @@ def root():
         "description": "AI-powered energy intelligence platform",
         "status": "operational",
         "model_loaded": model is not None,
-        "dataset_loaded": get_energy_history() is not None",
+        "dataset_loaded": get_energy_history() is not None,
     }
 
 
