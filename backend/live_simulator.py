@@ -43,7 +43,6 @@ class EnergyStreamSimulator:
         # Start with enough history for GreenMind's 168-hour feature window.
         self.index = 168
         self.running = True
-        self._publish_history()
 
     def _load_data(self):
         if not self.data_path.exists():
