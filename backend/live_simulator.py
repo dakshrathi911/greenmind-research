@@ -101,9 +101,7 @@ class EnergyStreamSimulator:
     def _publish_history(self):
         """Publish source history to the shared telemetry store.
 
-        The backend.main assignment is a temporary compatibility bridge for
-        existing forecasting/dashboard functions. It will be removed when
-        those functions consume the telemetry store directly.
+        All forecasting and dashboard intelligence reads from this store.
         """
         history = self.data.iloc[: self.index + 1].copy()
 
