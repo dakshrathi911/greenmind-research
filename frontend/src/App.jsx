@@ -149,6 +149,26 @@ function App() {
     }
   }
 
+  async function exportTelemetryCsv() {
+    try {
+      const response = await fetch(`${LIVE_API_URL}/export?limit=1000`);
+      if (!response.ok) throw new Error(`Telemetry export returned ${response.status}`);
+      const blob = await response.blob();
+      const url = window.URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = "greenmind_telemetry.csv";
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      window.URL.revokeObjectURL(url);
+      setStreamError("");
+    } catch (err) {
+      console.error("Telemetry export error:", err);
+      setStreamError("Unable to export telemetry history.");
+    }
+  }
+
   async function resetLiveData() {
     try {
       setStreamActionLoading(true);
@@ -349,6 +369,14 @@ function App() {
               title="Reset simulator to its first reading"
             >
               Reset
+            </button>
+            <button
+              className="refresh-control"
+              onClick={exportTelemetryCsv}
+              disabled={!liveStatus}
+              title="Download up to 1,000 telemetry readings as CSV"
+            >
+              Export CSV
             </button>
             <button className="refresh-control" onClick={refreshDashboard} title="Refresh dashboard data" aria-label="Refresh dashboard data">
               <span aria-hidden="true">↻</span>
