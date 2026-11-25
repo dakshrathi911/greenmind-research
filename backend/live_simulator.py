@@ -113,13 +113,6 @@ class EnergyStreamSimulator:
             mode=self.MODE,
         )
 
-        # Temporary compatibility bridge for the existing AI functions.
-        import sys
-
-        backend_main = sys.modules.get("backend.main")
-        if backend_main is not None:
-            backend_main.energy_df = history
-
     def _serialize(self, row):
         return {
             "timestamp": str(row["timestamp"]),
