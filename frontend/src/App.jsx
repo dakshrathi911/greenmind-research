@@ -417,7 +417,11 @@ function App() {
             </div>
 
             <div className="metric-description">
-              Estimated emissions for one hour at current demand
+              {dashboard?.carbon_footprint?.intensity?.source_label || "Carbon intensity source unavailable"}
+              {dashboard?.carbon_footprint?.intensity?.carbon_intensity_gco2_per_kwh != null
+                ? ` · ${formatNumber(dashboard.carbon_footprint.intensity.carbon_intensity_gco2_per_kwh, 1)} gCO₂e/kWh`
+                : ""}
+              {dashboard?.carbon_footprint?.intensity?.is_fallback ? " · fallback estimate" : " · one-hour estimate"}
             </div>
           </div>
 
