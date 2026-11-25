@@ -3,7 +3,7 @@ from unittest.mock import patch
 
 import pandas as pd
 
-from backend.live_simulator import live_history
+from backend.live_simulator import export_live_history, live_history
 from backend.telemetry import TelemetryStore
 
 
@@ -43,6 +43,15 @@ class TelemetryHistoryEndpointTests(unittest.TestCase):
         self.assertEqual(result["telemetry"]["source"], "UCI dataset replay")
         self.assertEqual(result["telemetry"]["mode"], "simulation")
         self.assertEqual(result["readings"][-1]["unit"], "kW")
+
+    def test_exports_csv_with_source_metadata(self):
+        response = export_live_history(limit=2)
+
+        self.assertEqual(response.media_type, "text/csv")
+        self.assertIn("energy_kw,source,mode", response.body.decode("utf-8"))
+        self.assertIn("UCI dataset replay", response.body.decode("utf-8"))
+        self.assertIn("130.0", response.body.decode("utf-8"))
+        self.assertIn("140.0", response.body.decode("utf-8"))
 
     def test_returns_empty_history_when_store_is_empty(self):
         self.store.replace_history(
