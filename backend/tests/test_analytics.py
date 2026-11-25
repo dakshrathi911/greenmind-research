@@ -1,8 +1,11 @@
 import unittest
+from unittest.mock import patch
 
 import pandas as pd
+from fastapi import FastAPI
+from fastapi.testclient import TestClient
 
-from backend.analytics import build_load_shift_scenario, build_overview
+from backend.analytics import build_load_shift_scenario, build_overview, router
 
 
 class AnalyticsTests(unittest.TestCase):
@@ -19,6 +22,18 @@ class AnalyticsTests(unittest.TestCase):
         self.assertTrue(result["daily"])
         self.assertTrue(result["hourly_profile"])
         self.assertIn("energy_kwh", result["current_period"])
+
+
+    def test_overview_query_accepts_supported_integer_days_and_rejects_others(self):
+        app = FastAPI()
+        app.include_router(router)
+        client = TestClient(app)
+        with patch("backend.analytics._history", return_value=self.history):
+            valid = client.get("/api/analytics/overview?days=7")
+            invalid = client.get("/api/analytics/overview?days=14")
+        self.assertEqual(valid.status_code, 200)
+        self.assertEqual(valid.json()["period_days"], 7)
+        self.assertEqual(invalid.status_code, 422)
 
     def test_load_shift_conserves_total_energy_and_reports_peak(self):
         result = build_load_shift_scenario(self.history, 0.10)
