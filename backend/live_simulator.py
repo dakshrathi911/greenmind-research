@@ -9,11 +9,13 @@
 # The UCI replay remains simulated data, not live sensor telemetry.
 # ============================================================
 
+from io import StringIO
 from pathlib import Path
 from threading import Lock
 
 import pandas as pd
 from fastapi import APIRouter, Query
+from fastapi.responses import Response
 
 from backend.telemetry import telemetry_store
 
@@ -156,6 +158,25 @@ def live_history(limit: int = Query(default=168, ge=1, le=1000)):
         "count": len(readings),
         "readings": readings,
     }
+
+
+@router.get("/export")
+def export_live_history(limit: int = Query(default=1000, ge=1, le=1000)):
+    """Download recent telemetry as a CSV with source metadata."""
+    history = telemetry_store.get_history().tail(limit).copy()
+    history["source"] = telemetry_store.snapshot()["source"]
+    history["mode"] = telemetry_store.snapshot()["mode"]
+    history = history.rename(columns={"total_energy": "energy_kw"})
+
+    output = StringIO()
+    history.to_csv(output, index=False)
+    return Response(
+        content=output.getvalue(),
+        media_type="text/csv",
+        headers={
+            "Content-Disposition": 'attachment; filename="greenmind_telemetry.csv"'
+        },
+    )
 
 
 @router.post("/advance")
