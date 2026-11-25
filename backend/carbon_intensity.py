@@ -7,6 +7,7 @@ configured. Otherwise GreenMind uses its documented fallback factor.
 from __future__ import annotations
 
 import json
+import math
 import os
 import time
 from threading import RLock
@@ -85,8 +86,8 @@ class CarbonIntensityProvider:
         if value is None:
             value = payload.get("carbon_intensity")
         intensity = float(value)
-        if intensity <= 0:
-            raise ValueError("Provider returned a non-positive carbon intensity.")
+        if not math.isfinite(intensity) or intensity <= 0:
+            raise ValueError("Provider returned an invalid carbon intensity.")
 
         return {
             "carbon_intensity_gco2_per_kwh": round(intensity, 3),
